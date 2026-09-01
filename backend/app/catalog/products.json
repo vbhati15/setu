@@ -1,0 +1,66 @@
+[
+  {
+    "id": "mechanical-keyboard-65",
+    "name": "Mechanical Keyboard — Hot-swap, 65%",
+    "description": "Hot-swappable 65% mechanical keyboard.",
+    "price_paise": 349900,
+    "category": "peripherals",
+    "related_ids": ["keycap-set-pbt-129"]
+  },
+  {
+    "id": "wireless-mouse-ergo",
+    "name": "Wireless Mouse — 2.4GHz, ergonomic",
+    "description": "Ergonomic wireless mouse, 2.4GHz receiver.",
+    "price_paise": 129900,
+    "category": "peripherals",
+    "related_ids": ["mouse-pad-xl"]
+  },
+  {
+    "id": "usbc-hub-7in1",
+    "name": "USB-C Hub — 7-in-1",
+    "description": "7-in-1 USB-C hub with HDMI, USB-A, and card reader ports.",
+    "price_paise": 189900,
+    "category": "accessories",
+    "related_ids": ["cable-organizer-kit"]
+  },
+  {
+    "id": "monitor-27-1440p-144hz",
+    "name": "27\" Monitor — 1440p, 144Hz",
+    "description": "27-inch 1440p IPS monitor, 144Hz refresh rate.",
+    "price_paise": 1899900,
+    "category": "displays",
+    "related_ids": ["monitor-arm-single"]
+  },
+  {
+    "id": "keycap-set-pbt-129",
+    "name": "Keycap Set — PBT, 129 keys",
+    "description": "129-key PBT dye-sublimated keycap set.",
+    "price_paise": 89900,
+    "category": "peripherals",
+    "related_ids": []
+  },
+  {
+    "id": "mouse-pad-xl",
+    "name": "Mouse Pad — Extended, XL",
+    "description": "Extended XL desk mouse pad.",
+    "price_paise": 59900,
+    "category": "accessories",
+    "related_ids": []
+  },
+  {
+    "id": "cable-organizer-kit",
+    "name": "Cable Organizer Kit",
+    "description": "Desk cable organizer kit with clips and sleeves.",
+    "price_paise": 44900,
+    "category": "accessories",
+    "related_ids": []
+  },
+  {
+    "id": "monitor-arm-single",
+    "name": "Monitor Arm — Single, adjustable",
+    "description": "Single adjustable gas-spring monitor arm.",
+    "price_paise": 229900,
+    "category": "accessories",
+    "related_ids": []
+  }
+]

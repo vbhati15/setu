@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Setu demo checkout</title></head>
+<body>
+<div id="result">pending</div>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+  var options = {
+    "key": "__KEY_ID__",
+    "amount": "__AMOUNT_PAISE__",
+    "currency": "INR",
+    "order_id": "__ORDER_ID__",
+    "name": "Setu demo",
+    "description": "__DESCRIPTION__",
+    "prefill": {
+      "email": "demo-buyer@setu.dev",
+      "contact": "9999999999"
+    },
+    "handler": function (response) {
+      document.getElementById("result").innerText = JSON.stringify(response);
+      document.getElementById("result").setAttribute("data-status", "success");
+    },
+    "modal": {
+      "ondismiss": function () {
+        document.getElementById("result").setAttribute("data-status", "dismissed");
+      }
+    }
+  };
+  var rzp = new Razorpay(options);
+  rzp.on("payment.failed", function (response) {
+    document.getElementById("result").innerText = JSON.stringify(response.error);
+    document.getElementById("result").setAttribute("data-status", "failed");
+  });
+  rzp.open();
+</script>
+</body>
+</html>
