@@ -25,7 +25,7 @@ cd setu
 cp .env.example .env   # fill in Razorpay test keys + Gemini API key
 make install
 make test               # run the test suite
-make run                 # start the FastAPI backend on :8000
+make run                 # start the FastAPI backend on :8001
 make demo               # end-to-end Razorpay test-mode payment (needs real keys in .env)
 ```
 

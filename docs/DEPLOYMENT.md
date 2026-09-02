@@ -7,7 +7,7 @@
 
 ```bash
 make install   # creates .venv, installs backend + frontend deps
-make run        # starts FastAPI on :8000
+make run        # starts FastAPI on :8001
 make demo       # runs the end-to-end Razorpay test-mode payment script
 make test       # runs pytest
 ```
@@ -15,8 +15,15 @@ make test       # runs pytest
 Frontend dev server (separate terminal):
 
 ```bash
-cd frontend && npm run dev   # :5173, proxies /api -> :8000
+cd frontend && npm run dev   # :5173, proxies /api -> :8001
 ```
+
+Backend port is 8001, not the more common 8000, because Docker Desktop's
+backend/WSL relay claims port 8000 on Windows — anything hitting
+`localhost:8000` while Docker Desktop is running gets silently routed to
+Docker's relay instead of the app. If you hit a weird unrelated JSON
+response from `/health`, check `netstat -ano | findstr :<port>` for a
+process squatting on it before assuming the app is broken.
 
 ## Environment variables
 

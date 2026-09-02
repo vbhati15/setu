@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from fastapi import FastAPI, Header
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.app.catalog import get_catalog
@@ -11,6 +12,13 @@ from backend.app.llm import get_llm_client
 from backend.app.merchant_agent import MerchantAgent
 
 app = FastAPI(title="Setu", description="Agent-to-Agent Commerce Gateway (hackathon project)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_allowed_origins,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 @lru_cache

@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # --- Merchant identity ---
     merchant_id: str = "setu_merchant_test"
 
+    # --- CORS: origins allowed to call this API from a browser ---
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+        ]
+    )
+
     # --- Policy: spend limits (in paise, i.e. INR * 100) ---
     max_single_transaction_paise: int = 500_000  # INR 5,000 per transaction
     max_daily_spend_paise: int = 2_000_000  # INR 20,000 per day (aggregate, future use)
