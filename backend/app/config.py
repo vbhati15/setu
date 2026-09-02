@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
+            "https://setu-alpha-beige.vercel.app",
         ]
     )
 
