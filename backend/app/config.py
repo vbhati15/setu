@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # --- Gemini ---
     gemini_api_key: str = "placeholder_gemini_key"
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-flash-lite-latest"
 
     # --- Database ---
     database_url: str = "postgresql://setu:setu@localhost:5432/setu"
@@ -66,6 +66,27 @@ class Settings(BaseSettings):
 
     # --- Policy: bounded upsell ---
     max_upsell_discount_percent: int = 15  # hard cap enforced in code, not just prompted
+
+    # --- Policy: negotiation / Zeuthen bargaining (Day 2) ---
+    # Merchant's reservation price (won't sell below this) as a fraction of catalog list price.
+    # A single global fraction, not a per-product floor -- documented simplification, see BARGAINING.md.
+    merchant_min_price_factor: float = 0.75
+    negotiation_max_rounds: int = 12
+    # Floor on concession size per round (as a fraction of the current gap) so a
+    # near-zero risk value can't stall the negotiation indefinitely within max_rounds.
+    negotiation_min_concession_fraction: float = 0.15
+    # Cap on concession size per round. Early rounds often produce risk=1.0 on
+    # both sides (opening offers give each party ~0 utility from the other's
+    # offer), which would otherwise mean an immediate full concession to the
+    # opponent's price on round one. Capping keeps the risk-proportional
+    # sizing rule intact while preserving genuine multi-round back-and-forth.
+    negotiation_max_concession_fraction: float = 0.35
+    # A remaining gap this small (as a fraction of list price) is treated as
+    # agreement rather than forcing rounds to close the literal last paise.
+    negotiation_convergence_fraction: float = 0.01
+    # Buyer will consider products priced up to this multiple of budget as
+    # negotiation candidates (since a good-faith opening ask can still close below list price).
+    buyer_price_ceiling_factor: float = 1.5
 
     @property
     def is_live(self) -> bool:

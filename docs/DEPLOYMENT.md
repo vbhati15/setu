@@ -1,7 +1,33 @@
 # DEPLOYMENT.md
 
-> Status: skeleton (Day 1). No deployment has happened yet — this is local
-> dev only today. Fill in as the app is actually deployed.
+> Status: live. Backend on Render, frontend on Vercel, both reachable and
+> talking to each other in production as of 2026-09-03.
+
+## Live deployment
+
+- **Frontend**: [https://setu-alpha-beige.vercel.app](https://setu-alpha-beige.vercel.app) (Vercel)
+- **Backend**: [https://setu-59l6.onrender.com](https://setu-59l6.onrender.com) (Render)
+
+Verified end-to-end: the deployed frontend's built bundle points at the
+Render backend URL above, and loading the live site renders real data
+fetched from it (`GET /health` + `GET /catalog`) — not a static page.
+
+### Environment variables set on the hosts (not committed)
+
+- **Render (backend)**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`,
+  `GEMINI_API_KEY`, `DATABASE_URL`, `MERCHANT_ID`, `CORS_ALLOWED_ORIGINS`
+  (must include the Vercel origin — see `.env.example`). If `GEMINI_MODEL`
+  is explicitly set on Render (rather than left to `Settings`'s default),
+  it needs updating to `gemini-flash-lite-latest` — see the 2026-09-03
+  entry in `docs/DECISIONS.md` (the old default, `gemini-2.0-flash`, is now
+  fully deprecated server-side).
+- **Vercel (frontend)**: `VITE_API_URL` set to the Render backend URL above
+  (see `frontend/.env.example`). Without this it falls back to `/api`,
+  which only resolves via the local dev proxy — production needs it set
+  explicitly.
+
+Redeploy either side after changing catalog data, policy config, or the
+allowed-origins list.
 
 ## Local development (today)
 
@@ -60,6 +86,5 @@ successor) for the test account — not defeating Checkout's bot detection.
 ## Planned (not yet done)
 
 - Container image / Dockerfile.
-- Hosting target (TBD — likely Render/Railway/Fly for the FastAPI service,
-  static hosting for the frontend).
-- Live demo link (placeholder in README.md until deployed).
+- CI-orchestrated deploy step — `.github/workflows/test.yml` only runs
+  pytest today; it doesn't trigger or gate the Render/Vercel deploys.

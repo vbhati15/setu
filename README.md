@@ -8,7 +8,7 @@ Two AI agents (a Buyer and a Merchant) negotiate and complete real payments
 over Razorpay's test-mode APIs, speaking a Razorpay-adapted subset of the
 x402 protocol and (soon) bargaining via a Zeuthen strategy.
 
-Live demo: [link — not deployed yet]
+Live demo: [https://setu-alpha-beige.vercel.app](https://setu-alpha-beige.vercel.app) (frontend) · [https://setu-59l6.onrender.com](https://setu-59l6.onrender.com) (backend API)
 
 ## Status
 

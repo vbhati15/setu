@@ -2,6 +2,91 @@
 
 Running log of non-obvious decisions and why they were made. Newest first.
 
+## 2026-09-03 — Gemini model bumped from `gemini-2.0-flash` to `gemini-flash-lite-latest`
+
+Day 1's configured model (`gemini-2.0-flash`) started 404ing with
+`This model ... is no longer available` when the Buyer Agent's negotiation
+loop actually started calling it for the first time on Day 2 — Day 1's
+upsell path had exercised the code but the demo hadn't been re-run since
+before the model was deprecated server-side. `gemini-2.5-flash` also 404s
+("no longer available to new users"). Queried
+`genai.Client(...).models.list()` against the real API key for what's
+currently servable. First tried `gemini-3.6-flash` (the model the 404 error
+itself recommended) — it worked, but its free tier caps at **20 requests/day
+per project per model** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`),
+which the negotiation demo (~20+ calls across 3 scenarios) exhausted almost
+immediately, after which every further call 429'd and silently fell back to
+the deterministic non-LLM phrasing (see `BuyerAgent._phrase`'s fallback —
+this is by design and didn't break the negotiation, just the trace's
+natural-language flavor). Switched to `gemini-flash-lite-latest`, which has
+a materially higher free-tier daily quota and produced a full clean run
+across all three scenarios with no rate-limit fallbacks. Updated
+`Settings.gemini_model` default, `.env`, and `.env.example`. **Action
+needed**: the Render deployment's `GEMINI_MODEL` env var also needs
+updating to `gemini-flash-lite-latest` on redeploy — see
+`docs/DEPLOYMENT.md`.
+
+## 2026-09-03 — Zeuthen negotiation uses a single shared engine, not two independent agents inferring each other's utility
+
+A textbook-faithful distributed implementation would have each agent know
+only its own utility function and the other's *offers*, inferring
+risk/concession behavior from observed moves. Given the Day 2 time budget,
+`run_zeuthen_negotiation` is instead handed both parties' reservation
+prices directly and computes the whole round-by-round trace as a single
+deterministic function — the Buyer Agent and Merchant Agent each own a
+`Party` object (`BuyerParty`/`MerchantParty`) exposing `.utility()`/`.risk()`,
+but a single call site runs the protocol. The round-by-round trace still
+renders it as an explicit buyer-offer/merchant-counter/system-message
+exchange so it reads like two negotiating parties, and the algorithm itself
+(who concedes, how much) is the real Zeuthen rule — only the "who holds the
+private information" framing is simplified. Documented in full in
+`BARGAINING.md`.
+
+## 2026-09-03 — Negotiation concession size is risk-proportional with a floor and a cap, not raw risk
+
+Naive "concede by exactly your opponent's risk value" produces risk=1.0 on
+both sides in early rounds (opening offers give each party ~0 utility from
+the other's offer), which would jump the very first concession straight to
+the opponent's asking price — not a negotiation. Added
+`negotiation_max_concession_fraction` (default 0.35) alongside the existing
+floor `negotiation_min_concession_fraction` (default 0.15, prevents
+near-zero risk from stalling progress). Verified empirically (both in
+`test_zeuthen.py` and the real negotiation_demo trace) that this produces
+genuine multi-round back-and-forth that still converges within the round
+cap.
+
+## 2026-09-03 — Negotiation convergence uses a "close enough" gap threshold, not literal offer-crossing
+
+Because each concession is a multiplicative fraction of the remaining gap,
+literal convergence (`buyer_offer >= merchant_offer`) is asymptotic and can
+take many rounds to close the last few paise. Added
+`negotiation_convergence_fraction` (1% of list price) — a remaining gap at
+or below that is treated as agreement, deal price = midpoint clamped into
+both parties' feasible range. Kept `negotiation_max_rounds` (12) as a hard
+backstop regardless.
+
+## 2026-09-03 — Backend dev port moved from 8000 to 8001
+
+`localhost:8000` on the dev machine is silently claimed by Docker Desktop's
+backend/WSL relay (`com.docker.backend.exe`) — any request to it gets
+routed to Docker instead of our FastAPI app, with no error, just a
+different (and confusing) JSON response. Moved the documented dev port to
+8001 everywhere (`Makefile`, `vite.config.js` proxy target, README,
+`docs/DEPLOYMENT.md`) rather than working around it per-invocation.
+Deployed environments (Render) are unaffected — this is a local dev-machine
+quirk, not a hosting decision.
+
+## 2026-09-03 — CORS allow-list is config-driven, scoped to known origins only
+
+Deployed the frontend (Vercel) and backend (Render) to different origins,
+which meant the browser would block API calls without explicit CORS
+headers. Added `cors_allowed_origins` to `Settings` (same config-driven
+pattern as spend limits/categories) rather than a wildcard `allow_origins`
+— verified a disallowed origin gets no `Access-Control-Allow-Origin` header
+back. `allow_methods` is currently just `["GET"]`, matching what the API
+actually exposes to browsers today; will need widening if the dashboard
+later needs to POST (approve/deny controls, Day 4 scope).
+
 ## 2026-09-02 — `make demo` is semi-automated (one manual Checkout click), not headless
 
 Tried two fully-automated payment-completion paths and rejected both:

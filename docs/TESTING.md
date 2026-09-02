@@ -1,10 +1,10 @@
 # TESTING.md
 
-> Status: skeleton, updated with what actually exists as of Day 1.
+> Status: updated with what actually exists (Day 2).
 
 ## What's covered today
 
-`backend/tests/` (28 tests, all passing as of Day 1):
+`backend/tests/` (43 tests, all passing):
 
 - `test_health.py` — `/health` and `/catalog` endpoints via FastAPI
   `TestClient`.
@@ -16,6 +16,27 @@
   Razorpay + fake LLM clients: unpaid, unknown product, malformed id, valid
   payment, amount mismatch, bad signature, resource mismatch, upsell
   discount capping, upsell whitelist enforcement.
+- `test_zeuthen.py` — utility function bounds (buyer/merchant), risk
+  formula edge cases, a full negotiation that converges within budget, a
+  full negotiation that stalemates when budget is below the merchant's
+  floor, and instant closing when opening offers already cross.
+- `test_buyer_agent.py` — the three required end-to-end scenarios against
+  `FakeRazorpayClient` + a scripted (non-LLM) fake `LLMClient`: comfortable
+  budget with upsell accepted, tight budget requiring multi-round
+  negotiation (asserts `len(rounds) > 1` and that both sides concede at
+  least once, not just that it "converged"), and a budget with no viable
+  match (asserts graceful, structured failure — a matched product but a
+  `stalemate`/`max_rounds_exceeded` outcome, never a silent success). Also
+  covers the case where no catalog product matches the goal at all.
+
+For a real, unattended, non-mocked run against the actual Gemini API (not
+just the fake LLM client used in tests), see
+`backend/app/scripts/negotiation_demo.py` — `python -m
+backend.app.scripts.negotiation_demo`. This prints the full round-by-round
+trace for all three scenarios plus a per-call LLM log (latency, estimated
+token cost). Payment still goes through `FakeRazorpayClient`, not the real
+Checkout widget — see `docs/DECISIONS.md`, 2026-09-02, for why automated
+flows never drive the real widget.
 
 Run with:
 
@@ -30,10 +51,17 @@ pytest backend/tests -v
 - No integration test against a *real* Razorpay test account (would need
   real test-mode credentials in CI, which we don't want to commit/store
   there yet). `make demo` is the manual real-integration check.
-- No test against a real Gemini API call (LLM calls are mocked/faked in
-  tests by design — deterministic, no network, no quota usage).
-- No Buyer Agent / negotiation tests (doesn't exist yet).
-- No frontend tests (placeholder page only).
+- No test against a real Gemini API call inside `pytest` (LLM calls are
+  mocked/faked in `backend/tests/` by design — deterministic, no network, no
+  quota usage). Real-Gemini coverage is `negotiation_demo.py`, run manually,
+  not part of `make test` / CI.
+- No frontend tests — the frontend does make a real fetch call to
+  `/health` + `/catalog` now (see `frontend/src/api.js`), verified manually
+  against both local dev and the live deployment, but there's no automated
+  test for it (e.g. mocking the fetch and asserting render state).
+- No automated CORS test — verified manually with curl against a running
+  server (allowed vs. disallowed `Origin` headers); not covered by
+  `backend/tests/`.
 
 ## Property-based testing (hypothesis)
 

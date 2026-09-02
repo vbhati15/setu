@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from backend.app.bargaining import MerchantParty
 from backend.app.catalog import Catalog, Product, get_catalog
 from backend.app.config import Settings, get_settings
 from backend.app.llm.base import LLMClient
@@ -64,9 +65,20 @@ class MerchantAgent:
 
     # -- public API -----------------------------------------------------
 
-    def handle_request(self, product_id: str, x_payment_header: str | None = None) -> AgentResponse:
+    def handle_request(
+        self,
+        product_id: str,
+        x_payment_header: str | None = None,
+        agreed_price_paise: int | None = None,
+    ) -> AgentResponse:
         """Handle one x402 resource request. `product_id` and
-        `x_payment_header` are both untrusted client input."""
+        `x_payment_header` are both untrusted client input.
+
+        `agreed_price_paise` is set only for a purchase closing out a prior
+        negotiation (see `negotiation_party`) -- when present, payment is
+        verified against that agreed price instead of the catalog list
+        price. It is never taken from client input; only code that already
+        ran a Zeuthen negotiation to completion passes it."""
         if not isinstance(product_id, str) or not _PRODUCT_ID_RE.match(product_id):
             return AgentResponse(status_code=400, body={"error": "invalid product_id format"})
 
@@ -75,23 +87,25 @@ class MerchantAgent:
             return AgentResponse(status_code=404, body={"error": f"unknown product '{product_id}'"})
 
         resource = f"{self.resource_prefix}{product.id}"
+        expected_price_paise = agreed_price_paise if agreed_price_paise is not None else product.price_paise
 
         if not x_payment_header:
-            return self._payment_required(product, resource)
+            return self._payment_required(product, resource, expected_price_paise=expected_price_paise)
 
         try:
             payment_header = decode_x_payment_header(x_payment_header)
         except ValueError as exc:
-            return self._payment_required(product, resource, error=str(exc))
+            return self._payment_required(product, resource, expected_price_paise=expected_price_paise, error=str(exc))
 
         if payment_header.resource != resource:
             return self._payment_required(
-                product, resource, error="X-PAYMENT resource does not match requested product"
+                product, resource, expected_price_paise=expected_price_paise,
+                error="X-PAYMENT resource does not match requested product",
             )
 
-        ok, reason, payer = self._verify_payment(product, payment_header)
+        ok, reason, payer = self._verify_payment(product, payment_header, expected_price_paise)
         if not ok:
-            return self._payment_required(product, resource, error=reason)
+            return self._payment_required(product, resource, expected_price_paise=expected_price_paise, error=reason)
 
         return AgentResponse(
             status_code=200,
@@ -111,14 +125,32 @@ class MerchantAgent:
             },
         )
 
+    def min_acceptable_price(self, product: Product) -> int:
+        """Merchant's reservation price: won't sell below this. A configured
+        fraction of catalog list price -- see `merchant_min_price_factor` in
+        Settings and BARGAINING.md for why this is a single global fraction
+        rather than a per-product floor."""
+        return max(1, round(product.price_paise * self.settings.merchant_min_price_factor))
+
+    def negotiation_party(self, product_id: str) -> MerchantParty | None:
+        """Returns this merchant's Zeuthen utility function for `product_id`,
+        for a Buyer Agent to negotiate against. Returns None for an unknown
+        product -- deterministic, no LLM call."""
+        product = self.catalog.get(product_id)
+        if product is None:
+            return None
+        return MerchantParty(min_price_paise=self.min_acceptable_price(product), list_price_paise=product.price_paise)
+
     # -- internals --------------------------------------------------------
 
-    def _payment_required(self, product: Product, resource: str, error: str | None = None) -> AgentResponse:
+    def _payment_required(
+        self, product: Product, resource: str, expected_price_paise: int | None = None, error: str | None = None
+    ) -> AgentResponse:
         upsell = self._maybe_build_upsell(product)
         body = build_payment_required_body(
             resource=resource,
             description=product.description,
-            price_paise=product.price_paise,
+            price_paise=expected_price_paise if expected_price_paise is not None else product.price_paise,
             merchant_id=self.settings.merchant_id,
             category=product.category,
             upsell=upsell,
@@ -127,7 +159,9 @@ class MerchantAgent:
             body["error"] = error
         return AgentResponse(status_code=402, body=body)
 
-    def _verify_payment(self, product: Product, payment_header) -> tuple[bool, str | None, str | None]:
+    def _verify_payment(
+        self, product: Product, payment_header, expected_price_paise: int
+    ) -> tuple[bool, str | None, str | None]:
         payload = payment_header.payload
         try:
             payment = self.razorpay_client.fetch_payment(payload.payment_id)
@@ -136,8 +170,8 @@ class MerchantAgent:
 
         if payment.get("order_id") != payload.order_id:
             return False, "payment order_id does not match X-PAYMENT payload", None
-        if int(payment.get("amount", 0)) != product.price_paise:
-            return False, "payment amount does not match product price", None
+        if int(payment.get("amount", 0)) != expected_price_paise:
+            return False, "payment amount does not match agreed price", None
         if payment.get("status") not in ("captured", "authorized"):
             return False, f"payment status is '{payment.get('status')}', not captured", None
 

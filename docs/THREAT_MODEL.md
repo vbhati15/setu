@@ -27,6 +27,34 @@
 - **Live-mode credential leakage**: `config.py` refuses to boot if
   `SETU_ENV=test` but the Razorpay key looks like a live key, and refuses to
   boot in live mode at all (not yet supported).
+- **Cross-origin API abuse**: now that the backend is deployed and publicly
+  reachable (Render), `CORSMiddleware` restricts browser-originated requests
+  to an explicit allow-list (`config.cors_allowed_origins`: the deployed
+  Vercel origin + local dev). Verified: a disallowed `Origin` header gets a
+  response with no `Access-Control-Allow-Origin` header, so a browser
+  blocks script access to it. Note this only constrains *browser* JS
+  callers — it is not an auth boundary, and any non-browser client (curl,
+  another server) can call the API directly regardless of CORS. Real
+  authorization is still the x402 payment-verification path, not CORS.
+
+## Known risks already mitigated (Day 2)
+
+- **Negotiated-price tampering**: a buyer cannot pay less than what the
+  Zeuthen engine actually agreed to and claim the resource — payment
+  verification checks the fake-Razorpay payment amount against
+  `agreed_price_paise`, a value only code that ran a full negotiation to
+  completion can produce (never taken from client/buyer input). See
+  `MerchantAgent.handle_request` / `_verify_payment`.
+- **LLM cannot move the price**: the negotiation math
+  (`backend/app/bargaining/zeuthen.py`) has no LLM involvement at all;
+  Gemini only phrases a round's already-decided numbers as a sentence for
+  the trace. A malformed or adversarial LLM response degrades trace
+  readability, not the negotiated price — see `BuyerAgent._phrase`'s
+  fallback and `BARGAINING.md`.
+- **Merchant's reservation price is never exposed to the buyer's decision
+  logic**: `BuyerAgent` only ever calls `MerchantParty.risk()`/`.utility()`
+  through the shared negotiation engine, never reads `min_price_paise`
+  directly to decide its own offers.
 
 ## Known gaps (tracked, not yet mitigated)
 
@@ -35,10 +63,19 @@
   more than once. Needs an idempotency store (Day 3, policy/trust layer).
 - **Velocity/spend limits**: `max_purchases_per_minute/hour` and
   `max_daily_spend_paise` exist in config but are not yet enforced anywhere
-  — no request currently increments a counter.
-- **Buyer Agent trust boundary**: undefined until Day 2 — what can a
-  Buyer Agent claim about itself, and how much does the Merchant Agent
-  trust it?
+  — no request currently increments a counter. This now matters more: an
+  unattended negotiation loop could in principle be pointed at many
+  products back-to-back with no per-run spend cap beyond each negotiation's
+  own budget parameter.
+- **Negotiation engine holds both parties' private reservation prices in
+  one process** — a simulation simplification, not a real two-party
+  protocol; see "What this does not model" in `BARGAINING.md`. Not a
+  vulnerability in this codebase today (single process, no real
+  information asymmetry to violate), but would need addressing before a
+  Buyer Agent and Merchant Agent ever ran as separate services.
+- **Buyer Agent has no policy/spend-approval layer yet** — it will
+  negotiate up to whatever `budget_paise` it's called with; there's no
+  Day-3 human-approval-above-threshold gate in front of it yet.
 
 ## Out of scope for a hackathon demo
 
