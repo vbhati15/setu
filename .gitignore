@@ -34,6 +34,9 @@ yarn-error.log*
 *.log
 logs/
 
+# --- Planning docs (not for the repo) ---
+/planning/
+
 # --- OS / editor ---
 .DS_Store
 Thumbs.db
