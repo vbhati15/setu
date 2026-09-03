@@ -127,6 +127,14 @@ class MerchantAgent:
         verified against that agreed price instead of the catalog list
         price. It is never taken from client input; only code that already
         ran a Zeuthen negotiation to completion passes it."""
+        if self.trust_guard.kill_switch.is_active:
+            reason = self.trust_guard.kill_switch.reason or "no reason given"
+            logger.warning("request rejected: kill switch active (reason=%s)", reason)
+            return AgentResponse(
+                status_code=503,
+                body={"error": f"kill switch is active ({reason}); no new transactions are being processed"},
+            )
+
         if not isinstance(product_id, str) or not _PRODUCT_ID_RE.match(product_id):
             return AgentResponse(status_code=400, body={"error": "invalid product_id format"})
 

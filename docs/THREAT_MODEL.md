@@ -154,8 +154,16 @@ transactions.
   `X-ADMIN-KEY`) halts *all* new transaction processing immediately,
   regardless of any other check passing — the emergency stop for a runaway
   agent or a detected incident. Checked first, before signature
-  verification, in `TrustGuard.authorize_purchase`. See
-  `test_kill_switch_triggered_mid_scenario_blocks_the_upsell_leg`.
+  verification, in `TrustGuard.authorize_purchase` (the in-process
+  Buyer/Merchant path — see `test_kill_switch_triggered_mid_scenario_blocks_the_upsell_leg`)
+  **and** at the top of `MerchantAgent.handle_request` itself (the deployed
+  `GET /products/{id}` HTTP endpoint — see
+  `test_kill_switch_blocks_the_live_products_endpoint`). Both are necessary:
+  a live-deployment verification against production on 2026-09-04 found
+  that only the former was wired up — `GET /products/{id}` returned its
+  normal `402` completely unaffected by kill-switch state, because that
+  endpoint never went through `TrustGuard` at all. Fixed the same day; see
+  the corresponding `BUILD_LOG.md` entry for the full incident.
 
 ### Threat: malicious catalog data
 

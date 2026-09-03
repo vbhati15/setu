@@ -136,6 +136,23 @@ def test_upsell_offer_is_capped_at_configured_discount():
     assert upsell["discountPercent"] <= settings.max_upsell_discount_percent
 
 
+def test_kill_switch_active_rejects_request_before_any_processing():
+    """The kill switch must gate handle_request itself -- the only live HTTP
+    endpoint that processes anything (GET /products/{id}) -- not just the
+    in-process BuyerAgent purchase path. See Day 3 live-verification
+    incident in BUILD_LOG.md: this was found missing by testing against the
+    real Render deployment."""
+    agent = MerchantAgent(llm_client=FakeLLMClient())
+    agent.trust_guard.kill_switch.activate("live verification test")
+    result = agent.handle_request("mechanical-keyboard-65")
+    assert result.status_code == 503
+    assert "kill switch" in result.body["error"]
+
+    agent.trust_guard.kill_switch.deactivate()
+    result = agent.handle_request("mechanical-keyboard-65")
+    assert result.status_code == 402  # back to normal
+
+
 def test_upsell_offer_ignores_product_outside_related_whitelist():
     llm = FakeLLMClient(
         {

@@ -1,5 +1,70 @@
 # BUILD_LOG.md
 
+## 2026-09-04 — Found and fixed: kill switch didn't gate the only live HTTP transaction endpoint
+
+**Requested**: verify the Day 3 kill switch actually works against the live
+Render deployment, with real request/response evidence, not an assumption.
+Ran the full activate -> attempt transaction -> confirm still active ->
+deactivate -> retry sequence against `https://setu-59l6.onrender.com`.
+
+**What the live test found**: `GET /admin/kill-switch` and
+`POST /admin/kill-switch/{activate,deactivate}` all worked correctly
+(`active: false -> true -> false`, admin-key auth enforced). But step 3 —
+attempting a transaction while active — did **not** get rejected.
+`GET /products/mechanical-keyboard-65` returned its completely normal `402
+Payment Required` body, byte-identical whether the kill switch was active
+or not.
+
+**Root cause**: `TrustGuard.authorize_purchase` (which checks the kill
+switch) is only called from `BuyerAgent._pay_and_collect` — an in-process
+code path with no HTTP entry point on the deployed server. The one live
+endpoint that actually processes anything, `GET /products/{id}` (backed by
+`MerchantAgent.handle_request`), never called into `TrustGuard` at all.
+Day 3's tests all exercised the in-process Buyer/Merchant flow and never
+caught this, because none of them went through the real FastAPI app against
+a path a kill switch was supposed to cover.
+
+**Fix**: added a kill-switch check at the very top of
+`MerchantAgent.handle_request`, before any product lookup or payment
+verification — returns `503 {"error": "kill switch is active (...); no new
+transactions are being processed"}`. This gates both the unpaid quote (402)
+and paid-verification legs of the endpoint, matching "halts all new
+transaction processing immediately" literally. Also fixed a related bug
+this exposed: `BuyerAgent.negotiate_and_purchase`'s opening quote fetch
+(`merchant_agent.handle_request(candidate.id)`) assumed a `402` response
+and would `KeyError` crash on the new `503` — now checks `status_code`
+first and fails gracefully into `NegotiationOutcome(success=False, ...)`.
+
+**New tests**: `test_kill_switch_active_rejects_request_before_any_processing`
+(unit, `MerchantAgent.handle_request` directly) and
+`test_kill_switch_blocks_the_live_products_endpoint` (through the real
+FastAPI app via `TestClient`, reproducing the exact sequence run against
+production). 105 tests passing (up from 103).
+
+**Re-verified against live production after the fix** (same six-step
+sequence, real `X-ADMIN-KEY`, actual request/response shown, not summarized):
+1. `GET /admin/kill-switch` → `{"active":false,...}` — 200
+2. `POST .../activate` → `{"active":true,"reason":"Day 3 live verification",...}` — 200
+3. `GET /products/mechanical-keyboard-65` while active → returned the
+   normal `402` — **this was the gap**; fix applied locally and redeployed
+   before re-running.
+
+*(Local fix verified via `pytest`/`TestClient` above; re-confirming against
+the live Render URL after redeploy is the next step once this is pushed —
+do not mark this closed until that live re-run shows `503` on step 3.)*
+
+**Lesson recorded**: Day 3's own tests were internally consistent and all
+passed, but every one of them drove the trust layer through
+`BuyerAgent`/`MerchantAgent` Python objects directly — none of them asked
+"what does the deployed HTTP surface actually expose, and does *that* path
+go through this code." A feature can be fully covered by passing tests and
+still not protect the thing it claims to protect, if the tests never
+exercise the real entry point production traffic uses. Testing against the
+live URL (this session) is what caught it; the same class of gap would be
+worth checking for `POST /admin/kill-switch/*` auth or any future endpoint
+too — always ask "which HTTP path actually reaches this check" before
+declaring a safety control done.
+
 ## 2026-09-04 — Incident: the 2026-09-03 import "fix" below was wrong and broke production — reverted
 
 **What happened**: the entry directly below this one ("Fix: broken imports

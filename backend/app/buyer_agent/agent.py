@@ -103,6 +103,10 @@ class BuyerAgent:
             return NegotiationOutcome(success=False, reason=reason, trace=trace)
 
         quote = self.merchant_agent.handle_request(candidate.id)
+        if quote.status_code != 402:
+            reason = quote.body.get("error", f"merchant returned unexpected status {quote.status_code} for a quote")
+            trace.append(NegotiationTrace(0, "system", reason))
+            return NegotiationOutcome(success=False, reason=reason, product=candidate, trace=trace)
         list_price_paise = int(quote.body["accepts"][0]["maxAmountRequired"])
         trace.append(
             NegotiationTrace(
