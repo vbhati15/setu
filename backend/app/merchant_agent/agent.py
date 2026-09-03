@@ -13,6 +13,7 @@ strategy, which is explicitly out of scope until Day 2/3.
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 
@@ -21,12 +22,17 @@ from backend.app.catalog import Catalog, Product, get_catalog
 from backend.app.config import Settings, get_settings
 from backend.app.llm.base import LLMClient
 from backend.app.razorpay_client import RazorpayClient
+from backend.app.trust.guard import AuthorizationResult, TrustGuard
+from backend.app.trust.identity import AgentCredential, SignedRequest
+from backend.app.trust.retry import RetryExhausted, retry_with_backoff
 from backend.app.x402.protocol import (
     build_payment_required_body,
     decode_x_payment_header,
     encode_x_payment_response,
 )
 from backend.app.x402.schema import UpsellOffer
+
+logger = logging.getLogger("setu.merchant_agent")
 
 _PRODUCT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 
@@ -56,12 +62,54 @@ class MerchantAgent:
         razorpay_client: RazorpayClient | None = None,
         llm_client: LLMClient | None = None,
         settings: Settings | None = None,
+        trust_guard: TrustGuard | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.catalog = catalog or get_catalog()
         self.razorpay_client = razorpay_client or RazorpayClient(self.settings)
         self.llm_client = llm_client
         self.resource_prefix = "/products/"
+        self.trust_guard = trust_guard or TrustGuard(settings=self.settings)
+
+    # -- trust/identity ---------------------------------------------------
+
+    def issue_credential(
+        self,
+        *,
+        agent_id: str,
+        public_key_b64: str,
+        max_spend_paise: int,
+        allowed_categories: list[str] | None = None,
+        ttl_seconds: float | None = None,
+    ) -> AgentCredential:
+        """Onboards an agent (e.g. a Buyer Agent) by issuing it a scoped,
+        expiring credential -- this merchant is the trust root for its own
+        marketplace. See trust/identity.py."""
+        return self.trust_guard.issuer.issue(
+            agent_id=agent_id,
+            public_key_b64=public_key_b64,
+            max_spend_paise=max_spend_paise,
+            allowed_categories=allowed_categories if allowed_categories is not None else list(self.settings.allowed_categories),
+            ttl_seconds=ttl_seconds if ttl_seconds is not None else self.settings.agent_credential_ttl_seconds,
+        )
+
+    def authorize_purchase(self, request: SignedRequest, *, category: str) -> AuthorizationResult:
+        """Runs the full trust pipeline (kill switch, signature/credential
+        verification, replay defense, credential scope, idempotency,
+        velocity, policy bounds) for a purchase request. Does not itself
+        charge anything -- callers still run the actual x402 payment flow
+        via `handle_request` and must call `record_purchase_attempt` /
+        `store_purchase_result` themselves once it settles."""
+        return self.trust_guard.authorize_purchase(request, category=category)
+
+    def record_purchase_attempt(self, agent_id: str) -> None:
+        self.trust_guard.record_attempt(agent_id)
+
+    def record_purchase_spend(self, agent_id: str, amount_paise: int) -> None:
+        self.trust_guard.record_spend(agent_id, amount_paise)
+
+    def store_purchase_result(self, idempotency_key: str, result) -> None:
+        self.trust_guard.store_result(idempotency_key, result)
 
     # -- public API -----------------------------------------------------
 
@@ -164,8 +212,14 @@ class MerchantAgent:
     ) -> tuple[bool, str | None, str | None]:
         payload = payment_header.payload
         try:
-            payment = self.razorpay_client.fetch_payment(payload.payment_id)
-        except Exception as exc:  # pragma: no cover - network/SDK errors
+            payment = retry_with_backoff(
+                lambda: self.razorpay_client.fetch_payment(payload.payment_id),
+                retriable_exceptions=(TimeoutError, ConnectionError, OSError),
+            )
+        except RetryExhausted as exc:
+            logger.warning("payment verification failed after retries: %s", exc)
+            return False, f"could not verify payment after retries: {exc.last_error}", None
+        except Exception as exc:  # pragma: no cover - non-retriable SDK errors
             return False, f"could not verify payment: {exc}", None
 
         if payment.get("order_id") != payload.order_id:

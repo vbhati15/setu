@@ -1,5 +1,99 @@
 # BUILD_LOG.md
 
+## 2026-09-03 — Day 3: trust/safety layer (signed identity, policy, idempotency, velocity, kill switch, retry)
+
+**Goal for today**: the trust/safety layer that differentiates Setu from a
+"two LLMs chat and checkout" demo — signed agent identity, a policy/gating
+engine, idempotency, velocity limits + kill switch, and external-failure
+handling, each with tests that prove the rule actually fires, not just that
+it exists. Threat model expanded alongside the code as it was built.
+
+**Built:**
+
+- `backend/app/trust/identity.py`: Ed25519 keypairs per agent
+  (`AgentIdentity`), scoped/expiring credentials signed by a trusted issuer
+  (`AgentCredential` + `CredentialIssuer` — the Merchant Agent is the trust
+  root for its own marketplace), and signed request envelopes
+  (`SignedRequest`/`build_signed_request`) covering payload + nonce +
+  timestamp + idempotency key under one signature.
+- `backend/app/trust/policy.py`: `PolicyEngine` — spend cap and category
+  rules today (discount bounds via `evaluate_discount`), config-driven from
+  `Settings`, each rule independently testable. Within bounds: approved.
+  Outside: escalated with a specific, human-readable reason — never a
+  silent drop.
+- `backend/app/trust/idempotency.py`, `velocity.py`, `kill_switch.py`,
+  `retry.py`: in-memory dedup store, sliding-window per-agent rate limiter,
+  a global halt flag, and `retry_with_backoff` for transient Razorpay
+  failures.
+- `backend/app/trust/guard.py`: `TrustGuard.authorize_purchase()` — the
+  single choke point composing all of the above in order (kill switch ->
+  signature/credential -> replay -> credential scope -> idempotency ->
+  velocity -> policy bounds), logging every rejection with agent id, rule,
+  and reason.
+- Wired into the real purchase path: `MerchantAgent` now owns a
+  `TrustGuard`, issues credentials to Buyer Agents it onboards, and wraps
+  its Razorpay `fetch_payment` call in `retry_with_backoff`.
+  `BuyerAgent` generates its own identity at construction, gets issued a
+  credential from the merchant, and signs every purchase attempt
+  (`_pay_and_collect`) before it ever touches the payment rail —
+  rejected/escalated purchases never reach `razorpay_client.create_order`.
+- `POST /admin/kill-switch/{activate,deactivate}` + `GET
+  /admin/kill-switch` in `main.py`, protected by a shared `X-ADMIN-KEY`
+  (`Settings.admin_api_key`).
+- `docs/THREAT_MODEL.md` expanded in full: replay attacks, agent
+  impersonation, budget overrun, malicious catalog data, and prompt
+  injection via product descriptions, each with what specifically defends
+  against it and which test proves it.
+- 53 new tests (96 total, up from 43): identity signing/verification,
+  policy rules firing, idempotency dedup, velocity windows, kill-switch
+  activate/deactivate (unit + HTTP), retry/backoff, and a `TrustGuard`
+  integration suite covering unsigned/wrong-key/out-of-scope rejection, a
+  genuine duplicate purchase resulting in exactly one charge, a kill switch
+  triggered mid-scenario blocking the remaining leg, and a simulated
+  Razorpay timeout recovering via retry.
+
+**Verified today:**
+
+- `pytest backend/tests -v` → 96/96 passing.
+- Full negotiate-and-purchase flow smoke-tested against the fake Razorpay
+  client with the new identity/credential wiring in place (no Day 2
+  behavior regressed — same 43 Day 1/2 tests still pass unmodified).
+- `POST /admin/kill-switch/activate` without/with a wrong `X-ADMIN-KEY` ->
+  `401`; with the correct key -> `200`, and a subsequent purchase attempt
+  is blocked until `deactivate` is called (`test_kill_switch_endpoint.py`,
+  `test_kill_switch_triggered_mid_scenario_blocks_the_upsell_leg`).
+
+**Follow-up, same day:** the `max_daily_spend_paise` scope cut above was
+closed out — `backend/app/trust/daily_spend.py` (`DailySpendTracker`, a
+rolling-24h per-agent spend sum) is now wired into `TrustGuard` right after
+the velocity check, and only records spend for transactions that actually
+completed (`TrustGuard.record_spend`, called from `BuyerAgent._pay_and_collect`
+only once a transaction id comes back — a rejected/escalated attempt never
+counts). New tests:
+`test_daily_spend_cap_fires_after_a_sequence_of_individually_valid_transactions`
+(guard-level) and `test_daily_spend_cap_fires_across_a_sequence_of_individually_valid_purchases`
+(through the real BuyerAgent/MerchantAgent flow) — both prove the cap fires
+from a sequence of transactions that are each individually within every
+other bound, isolating this rule specifically. 103 tests passing (up from
+96).
+
+**Known gaps carried forward (see docs/THREAT_MODEL.md):**
+
+- Trust-layer state (idempotency store, velocity counters, nonce cache,
+  kill switch) is in-process/per-instance — fine for today's single Render
+  instance, would need a shared store before running more than one.
+- Admin kill-switch auth is a single shared static key, not per-operator.
+- The "signed request" boundary is each Buyer->Merchant call, not each
+  individual Zeuthen negotiation round (those are still computed in one
+  local process call, a carried-forward Day 2 simplification).
+
+**Deployment:** not run from this session — redeploy Render/Vercel
+manually once you've reviewed the diff, and set `ADMIN_API_KEY` on Render
+(see `docs/DEPLOYMENT.md`). New dependency: `cryptography==50.0.1` added to
+`requirements.txt` (Ed25519 signing) — make sure Render's build picks it up.
+
+**Next:** whatever Day 4 covers, or hardening any of the gaps above.
+
 ## 2026-09-03 — Day 2: Buyer Agent, Zeuthen bargaining, unattended negotiation loop
 
 **Goal for today**: Buyer Agent that negotiates with the Merchant Agent over

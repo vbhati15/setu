@@ -16,7 +16,9 @@ fetched from it (`GET /health` + `GET /catalog`) — not a static page.
 
 - **Render (backend)**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`,
   `GEMINI_API_KEY`, `DATABASE_URL`, `MERCHANT_ID`, `CORS_ALLOWED_ORIGINS`
-  (must include the Vercel origin — see `.env.example`). If `GEMINI_MODEL`
+  (must include the Vercel origin — see `.env.example`), and
+  `ADMIN_API_KEY` (Day 3 — required to call `POST /admin/kill-switch/*`;
+  generate a real random value, the `.env.example` default is dev-only). If `GEMINI_MODEL`
   is explicitly set on Render (rather than left to `Settings`'s default),
   it needs updating to `gemini-flash-lite-latest` — see the 2026-09-03
   entry in `docs/DECISIONS.md` (the old default, `gemini-2.0-flash`, is now

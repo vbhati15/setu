@@ -21,6 +21,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import uuid
 from dataclasses import dataclass, field
 
 from backend.app.bargaining import BuyerParty, RoundResult, run_zeuthen_negotiation
@@ -29,6 +30,7 @@ from backend.app.config import Settings, get_settings
 from backend.app.fake_razorpay import FakeRazorpayClient
 from backend.app.llm.base import LLMClient
 from backend.app.merchant_agent import MerchantAgent
+from backend.app.trust.identity import AgentIdentity, build_signed_request
 
 _STOPWORDS = {
     "a", "an", "the", "get", "buy", "for", "and", "of", "to", "in", "with",
@@ -68,12 +70,23 @@ class BuyerAgent:
         razorpay_client: FakeRazorpayClient | None = None,
         catalog: Catalog | None = None,
         settings: Settings | None = None,
+        agent_id: str | None = None,
     ) -> None:
         self.merchant_agent = merchant_agent
         self.llm_client = llm_client
         self.razorpay_client = razorpay_client or FakeRazorpayClient()
         self.catalog = catalog or get_catalog()
         self.settings = settings or get_settings()
+
+        # Signed identity: this agent is onboarded (issued a scoped, expiring
+        # credential) by the merchant it will negotiate with. See
+        # backend/app/trust/identity.py.
+        self.identity = AgentIdentity.generate(agent_id or f"buyer-{uuid.uuid4().hex[:8]}")
+        self.credential = self.merchant_agent.issue_credential(
+            agent_id=self.identity.agent_id,
+            public_key_b64=self.identity.public_key_b64,
+            max_spend_paise=self.settings.max_single_transaction_paise,
+        )
 
     # -- public API -------------------------------------------------------
 
@@ -113,9 +126,9 @@ class BuyerAgent:
         trace.append(
             NegotiationTrace(0, "buyer", f"Budget covers list price ({list_price_paise} paise) -- accepting outright.")
         )
-        purchase = self._pay_and_collect(product.id, list_price_paise)
+        purchase, failure_reason = self._pay_and_collect(product.id, list_price_paise, product.category)
         if purchase is None:
-            reason = "payment/verification failed for list-price purchase"
+            reason = failure_reason or "payment/verification failed for list-price purchase"
             trace.append(NegotiationTrace(0, "system", reason))
             return NegotiationOutcome(success=False, reason=reason, product=product, trace=trace)
 
@@ -151,9 +164,10 @@ class BuyerAgent:
             outcome.trace.append(NegotiationTrace(0, "buyer", "Upsell declined -- exceeds remaining budget."))
             return
 
-        upsell_purchase = self._pay_and_collect(upsell_product.id, discounted_price)
+        upsell_purchase, failure_reason = self._pay_and_collect(upsell_product.id, discounted_price, upsell_product.category)
         if upsell_purchase is None:
-            outcome.trace.append(NegotiationTrace(0, "system", "Upsell purchase failed verification -- skipped."))
+            reason = failure_reason or "Upsell purchase failed verification -- skipped."
+            outcome.trace.append(NegotiationTrace(0, "system", reason))
             return
 
         outcome.trace.append(NegotiationTrace(0, "buyer", f"Upsell accepted: {upsell_product.name}."))
@@ -197,9 +211,9 @@ class BuyerAgent:
         agreed_price = last.deal_price_paise
         assert agreed_price is not None and agreed_price <= budget_paise
 
-        purchase = self._pay_and_collect(product.id, agreed_price)
+        purchase, failure_reason = self._pay_and_collect(product.id, agreed_price, product.category)
         if purchase is None:
-            reason = "payment/verification failed after negotiated agreement"
+            reason = failure_reason or "payment/verification failed after negotiated agreement"
             trace.append(NegotiationTrace(len(rounds), "system", reason))
             return NegotiationOutcome(success=False, reason=reason, product=product, rounds=rounds, trace=trace)
 
@@ -289,14 +303,39 @@ class BuyerAgent:
 
     # -- payment ------------------------------------------------------------
 
-    def _pay_and_collect(self, product_id: str, price_paise: int) -> str | None:
+    def _pay_and_collect(
+        self, product_id: str, price_paise: int, category: str, idempotency_key: str | None = None
+    ) -> tuple[str | None, str | None]:
+        """Runs one purchase through the full trust pipeline before ever
+        touching a payment rail. Returns (transaction_id, failure_reason) --
+        exactly one is None. `idempotency_key` defaults to a fresh key per
+        call; pass an explicit one to test/trigger dedup behavior."""
+        idempotency_key = idempotency_key or f"{product_id}:{uuid.uuid4().hex}"
+        request = build_signed_request(
+            self.identity, self.credential, {"product_id": product_id, "price_paise": price_paise}, idempotency_key
+        )
+        auth = self.merchant_agent.authorize_purchase(request, category=category)
+        if not auth.approved:
+            kind = "escalated for review" if auth.escalate else "rejected"
+            return None, f"purchase {kind} by trust layer ({auth.rule}): {auth.reason}"
+        if auth.is_replay:
+            # A previously-completed purchase with this idempotency key --
+            # return its result without creating a new order/charge.
+            return auth.cached_result, None if auth.cached_result else "cached purchase attempt had previously failed"
+
         order = self.razorpay_client.create_order(price_paise)
         pay = self.razorpay_client.pay_order(order["id"], price_paise)
         header = self._build_x_payment_header(product_id, pay)
         result = self.merchant_agent.handle_request(product_id, header, agreed_price_paise=price_paise)
-        if result.status_code != 200:
-            return None
-        return result.body.get("transaction")
+        self.merchant_agent.record_purchase_attempt(self.identity.agent_id)
+
+        transaction_id = result.body.get("transaction") if result.status_code == 200 else None
+        if transaction_id is not None:
+            self.merchant_agent.record_purchase_spend(self.identity.agent_id, price_paise)
+        self.merchant_agent.store_purchase_result(idempotency_key, transaction_id)
+        if transaction_id is None:
+            return None, result.body.get("error", "payment/verification failed")
+        return transaction_id, None
 
     @staticmethod
     def _build_x_payment_header(product_id: str, pay: dict) -> str:

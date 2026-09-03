@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     # --- Merchant identity ---
     merchant_id: str = "setu_merchant_test"
 
+    # --- Trust/admin ---
+    # Required as the `X-ADMIN-KEY` header on kill-switch admin endpoints.
+    # Override in deployment -- the default is only safe for local dev.
+    admin_api_key: str = "changeme-admin-key"
+    # How long an issued agent credential (see backend/app/trust/identity.py)
+    # remains valid before it must be reissued.
+    agent_credential_ttl_seconds: float = 3600
+
     # --- CORS: origins allowed to call this API from a browser ---
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [
