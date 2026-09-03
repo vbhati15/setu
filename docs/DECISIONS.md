@@ -40,7 +40,7 @@ renders it as an explicit buyer-offer/merchant-counter/system-message
 exchange so it reads like two negotiating parties, and the algorithm itself
 (who concedes, how much) is the real Zeuthen rule — only the "who holds the
 private information" framing is simplified. Documented in full in
-`BARGAINING.md`.
+`docs/BARGAINING.md`.
 
 ## 2026-09-03 — Negotiation concession size is risk-proportional with a floor and a cap, not raw risk
 

@@ -50,7 +50,7 @@
   Gemini only phrases a round's already-decided numbers as a sentence for
   the trace. A malformed or adversarial LLM response degrades trace
   readability, not the negotiated price — see `BuyerAgent._phrase`'s
-  fallback and `BARGAINING.md`.
+  fallback and `docs/BARGAINING.md`.
 - **Merchant's reservation price is never exposed to the buyer's decision
   logic**: `BuyerAgent` only ever calls `MerchantParty.risk()`/`.utility()`
   through the shared negotiation engine, never reads `min_price_paise`
@@ -69,7 +69,7 @@
   own budget parameter.
 - **Negotiation engine holds both parties' private reservation prices in
   one process** — a simulation simplification, not a real two-party
-  protocol; see "What this does not model" in `BARGAINING.md`. Not a
+  protocol; see "What this does not model" in `docs/BARGAINING.md`. Not a
   vulnerability in this codebase today (single process, no real
   information asymmetry to violate), but would need addressing before a
   Buyer Agent and Merchant Agent ever ran as separate services.

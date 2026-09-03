@@ -1,6 +1,8 @@
 # PROTOCOL.md — x402 subset implemented in Setu
 
-## Status: Day 1 (Merchant Agent side only; Buyer Agent is Day 2)
+## Status: Day 1 (Merchant Agent side) + Day 2 (Buyer Agent negotiates a
+price via Zeuthen bargaining before closing the x402 cycle below — see
+`docs/BARGAINING.md`)
 
 ## Why a subset
 
@@ -105,7 +107,10 @@ The Merchant Agent (`backend/app/merchant_agent/agent.py`):
    B).
 3. Fetches the payment from Razorpay by `payment_id` and checks:
    - `order_id` matches,
-   - `amount` matches the catalog price exactly,
+   - `amount` matches exactly — either the catalog list price, or (Day 2) a
+     prior negotiated price when the request follows a completed Zeuthen
+     negotiation (`handle_request(..., agreed_price_paise=...)`; see
+     "Where negotiation fits" below and `docs/BARGAINING.md`),
    - `status` is `captured` or `authorized`,
    - the signature verifies via Razorpay's HMAC utility.
 4. On success: `200 OK` with the resource body and an `X-PAYMENT-RESPONSE`
@@ -130,12 +135,30 @@ picks *whether* to offer one and *which* related product, but:
 - Any LLM failure (bad JSON, API error, timeout) results in `upsell: null`
   — it never blocks or breaks the core payment flow.
 
+## Where negotiation fits (Day 2)
+
+Zeuthen bargaining is not a variant of the x402 cycle itself — it runs
+*before* it, as an in-process exchange between the Buyer Agent and the
+Merchant Agent's `negotiation_party()` (see `docs/BARGAINING.md` for the
+algorithm). The x402 challenge/response cycle above is only ever run twice
+per purchase:
+
+1. An unpaid `GET /products/{id}` up front, purely to read the catalog list
+   price (and any upsell) — this is what tells the Buyer Agent whether it
+   can afford list price outright or needs to negotiate.
+2. The real payment retry, once a price is settled — either list price
+   (comfortable budget) or the Zeuthen-agreed price (tight budget) — with
+   the `X-PAYMENT` header carrying a payment made for that exact amount.
+   `MerchantAgent.handle_request` is told the agreed price via
+   `agreed_price_paise` (never taken from the buyer's claim) and verifies
+   the payment against it instead of catalog list price.
+
+Each negotiation round is not its own 402/200 round-trip; there is no
+"counter-offer" x402 message type. Only the final agreed price ever touches
+the payment-verification path above.
+
 ## What's deliberately NOT implemented today
 
-- **Buyer Agent** — nothing sends the initial request or reacts to a 402.
-  Day 2.
-- **Zeuthen bargaining / negotiation** — no counter-offers, no concession
-  logic. Day 2/3. See `docs/BARGAINING.md`.
 - **Multiple schemes/networks** — only `razorpay-inr` / `razorpay-test`
   exist; the literal crypto `exact` scheme is not implemented.
 - **Facilitator service** — verification is inline in the Merchant Agent,

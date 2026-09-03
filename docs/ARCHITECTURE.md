@@ -29,7 +29,7 @@
   an `X-PAYMENT` header at the agreed price.
 - **Bargaining (Zeuthen strategy)**: `backend/app/bargaining/zeuthen.py` —
   pure, deterministic utility/risk/concession math, no LLM. See
-  `BARGAINING.md` for the full writeup.
+  `docs/BARGAINING.md` for the full writeup.
 - **Fake Razorpay client**: `backend/app/fake_razorpay.py` — in-memory
   order/payment simulation for unattended automated flows (negotiation loop,
   tests). The real `RazorpayClient` (Checkout widget, manual click-through)

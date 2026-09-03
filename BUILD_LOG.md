@@ -16,7 +16,7 @@ end-to-end against a fake Razorpay client across 3 scenarios, then redeploy.
   size, capped/floored; stalemate and max-rounds-exceeded as explicit
   failure states; a convergence-gap tolerance so closing a negligible
   remaining gap doesn't burn the round budget). No LLM anywhere in this
-  module. Full writeup in `BARGAINING.md`.
+  module. Full writeup in `docs/BARGAINING.md`.
 - `backend/app/buyer_agent/`: `BuyerAgent.negotiate_and_purchase(goal, budget)`
   — deterministic keyword-based product matching, skips negotiation
   outright when budget covers list price (and evaluates the existing Day-1
@@ -76,7 +76,7 @@ end-to-end against a fake Razorpay client across 3 scenarios, then redeploy.
 - Negotiation engine is a single shared function holding both parties'
   reservation prices, not two independent agents inferring each other's
   utility from observed offers alone — documented simplification, see
-  "What this does not model" in `BARGAINING.md`.
+  "What this does not model" in `docs/BARGAINING.md`.
 - Merchant's reservation price is one global fraction of list price, not a
   per-product floor.
 - No spend-approval/policy gate in front of the Buyer Agent yet (Day 3).
