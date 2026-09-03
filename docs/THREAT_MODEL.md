@@ -211,6 +211,18 @@ widget), completely separate from `GET /products/{id}`'s real-Razorpay
 merchant instance — the two are different `MerchantAgent` objects that
 happen to share the one `TrustGuard`.
 
+**Live-verified against production (2026-09-04)**, not just locally: kill
+switch blocks both `/products/{id}` (`503`) and `/negotiate`
+(`success:false`) from one activation and both resume after one
+deactivation; spend cap rejects an over-cap purchase on both endpoints
+before any charge is attempted (`spend_cap` on the anonymous path,
+`credential_scope` on the signed `/negotiate` path — expected, since the
+Buyer Agent's credential scope is set equal to the platform cap, so the
+tighter, earlier-checked rule fires first); velocity limit correctly
+blocked a Buyer Agent's purchase attempts (including an upsell leg, which
+counts as its own attempt) after `max_purchases_per_minute` was reached.
+Full request/response transcript in the corresponding `BUILD_LOG.md` entry.
+
 ### Threat: malicious catalog data
 
 A compromised or careless catalog entry (product name/description/price)

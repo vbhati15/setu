@@ -69,16 +69,67 @@ over-cap-budget negotiation).
   `/admin/kill-switch` all still `200`; `POST /negotiate` with an invalid
   budget correctly `422`s without making any LLM/network call.
 
-**Not yet verified against live production** — this needs the working tree
-committed and pushed (explicitly not done by me this session, per
-instruction) and Render redeployed first. Once that's done, re-run the same
-curl-based approach used for the kill-switch fix: activate the kill switch
-and confirm both `/products/{id}` and (new) `/negotiate` are blocked;
-deactivate and confirm both resume; and specifically exercise spend-cap and
-velocity-limit enforcement live (not just kill switch), since those were
-never checked against production before. Do not consider this entry closed
-until that live evidence is captured here, the same standard applied to the
-kill-switch fix above.
+**Committed and pushed** as `13ad42a "Wire full TrustGuard into GET
+/products/{id}; add POST /negotiate over HTTP, sharing one TrustGuard so
+kill switch/limits are global"`. First Render deploy attempt was manually
+cancelled by the user for taking too long; `/health` stayed `200` throughout
+(cancelling left the previous deploy running, nothing went down). A manual
+"Deploy latest commit" from the Render dashboard completed successfully;
+confirmed the new code was live via `POST /negotiate` returning `422` for
+an invalid budget instead of `404`.
+
+**Re-verified against live production** (real request/response evidence,
+`https://setu-59l6.onrender.com`):
+
+*Kill switch now blocks both endpoints, not just `/products/{id}`:*
+```
+POST /admin/kill-switch/activate → {"active":true,"reason":"live verification: full trust guard + negotiate endpoint",...} — 200
+GET  /products/mechanical-keyboard-65 → {"error":"kill switch is active (...); no new transactions are being processed"} — 503
+POST /negotiate {"goal_text":"mechanical keyboard hot-swap","budget_paise":500000}
+  → {"success":false,"reason":"kill switch is active (...); no new transactions are being processed",...} — 200
+GET  /admin/kill-switch → still {"active":true,...} — 200
+POST /admin/kill-switch/deactivate → {"active":false,...} — 200
+```
+
+*Spend cap fires on both endpoints for the 1,899,900-paise monitor (cap is
+500,000), before any charge:*
+```
+GET /products/monitor-27-1440p-144hz  (X-PAYMENT header present, fabricated payment_id)
+  → {"error":"purchase escalated for review by trust layer (spend_cap): transaction amount 1899900 paise
+      exceeds the platform's max_single_transaction_paise cap of 500000 paise"} — 402
+  (never reached Razorpay -- the fabricated payment_id was never looked up)
+
+POST /negotiate {"goal_text":"27 inch monitor 1440p 144hz","budget_paise":2500000}
+  → {"success":false,"reason":"purchase rejected by trust layer (credential_scope): requested amount 1899900
+      paise exceeds this agent's credential scope (max_spend_paise=500000)",...} — 200
+```
+(`/negotiate`'s Buyer Agent has a credential whose scope exactly equals the
+platform's `max_single_transaction_paise`, so `credential_scope` -- checked
+before the platform-wide `spend_cap` rule -- is the one that fires here;
+`/products/{id}`'s anonymous path has no credential, so `spend_cap` fires
+directly. Both are real TrustGuard rejections before any charge was
+attempted; see `THREAT_MODEL.md`'s note on why these are separate,
+independently-tested rules.)
+
+*Velocity limit fires live on `/negotiate` (`max_purchases_per_minute=5`)
+-- four more calls to the same shared Buyer Agent after the baseline
+purchase above, each with an upsell leg that also counts as a purchase
+attempt:*
+```
+negotiate call 1 → 200, main + upsell both purchased
+negotiate call 2 → 200, main + upsell both purchased
+negotiate call 3 → 200, main purchased; upsell leg: "purchase escalated for review by trust layer (velocity):
+                    agent 'buyer-989bd678' exceeded velocity limit: 5/5 purchase attempts in the last minute"
+negotiate call 4 → 200 (HTTP), body: even the *main* product purchase now blocked by the same velocity rule
+```
+Confirmed `/products/{id}` (a separate caller-IP-bucketed identity) was
+unaffected by this agent's velocity block, and the kill switch was
+independently confirmed still `false` throughout.
+
+**Closed.** Every check claimed in this entry -- kill switch (both
+endpoints, shared), spend cap (both endpoints), velocity (negotiate) -- is
+now backed by real production request/response evidence, not local test
+results alone.
 
 ## 2026-09-04 — Found and fixed: kill switch didn't gate the only live HTTP transaction endpoint
 
