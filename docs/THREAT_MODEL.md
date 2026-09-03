@@ -1,8 +1,11 @@
 # THREAT_MODEL.md
 
-> Status: Day 3. Trust/safety layer (signed identity, policy engine,
-> idempotency, velocity limits, kill switch, retry-with-backoff) has landed
-> — see "Trust/safety layer (Day 3)" below.
+> Status: Day 4. Trust/safety layer (signed identity, policy engine,
+> idempotency, velocity limits, daily spend cap, kill switch,
+> retry-with-backoff) has landed and every rule except idempotency is now
+> live-verified against production on both `GET /products/{id}` and
+> `POST /negotiate` — see "Trust/safety layer (Day 3)" below and the known
+> gaps section for the one remaining live-verification hole.
 
 ## Assets
 
@@ -150,6 +153,26 @@ transactions.
   complete are added to the running total (`TrustGuard.record_spend`,
   called from `BuyerAgent._pay_and_collect` only once a transaction id
   comes back).
+  **Live-verified against production (2026-09-04)** on both endpoints —
+  see the corresponding `BUILD_LOG.md` entry for full transcripts. On
+  `/negotiate` (fake Razorpay rail, so real accumulation is cheap to
+  produce): six genuine successful purchases by the same shared Buyer
+  Agent (one mouse pad + five keyboards) pushed its real 24h total to
+  1,809,400 paise; a seventh, otherwise-valid purchase was then
+  consistently rejected (`daily_spend`, HTTP 200 body
+  `success:false`) with the exact running total in the reason string. On
+  `GET /products/{id}` (real Razorpay client — genuinely accumulating
+  spend here means completing real test-mode Checkout payments, which
+  this codebase deliberately never automates past Razorpay's bot
+  detection, see `docs/DECISIONS.md` 2026-09-02): `MAX_DAILY_SPEND_PAISE`
+  was temporarily lowered on the live deployment so a single request
+  alone exceeds it, exercising the identical `DailySpendTracker.check`
+  code path and rejection message via a fabricated `X-PAYMENT` payload —
+  rejected before any Razorpay call, same technique as the `spend_cap`
+  live test below, HTTP `429`. Also newly confirmed: `daily_spend` and
+  `velocity` rejections return HTTP `429`; `spend_cap`/`category`
+  rejections return `402` (see `MerchantAgent.handle_request`'s
+  `status = 429 if auth.rule in ("velocity", "daily_spend") else 402`).
 - **Defense — kill switch**: `POST /admin/kill-switch/activate` (requires
   `X-ADMIN-KEY`) halts *all* new transaction processing immediately,
   regardless of any other check passing — the emergency stop for a runaway
@@ -220,8 +243,43 @@ before any charge is attempted (`spend_cap` on the anonymous path,
 Buyer Agent's credential scope is set equal to the platform cap, so the
 tighter, earlier-checked rule fires first); velocity limit correctly
 blocked a Buyer Agent's purchase attempts (including an upsell leg, which
-counts as its own attempt) after `max_purchases_per_minute` was reached.
-Full request/response transcript in the corresponding `BUILD_LOG.md` entry.
+counts as its own attempt) after `max_purchases_per_minute` was reached;
+daily spend cap rejects a cumulative over-cap purchase on both endpoints
+after real prior spend (`/negotiate`) or an equivalent lowered-cap
+live-fire (`/products/{id}`, see above). Full request/response transcripts
+in the corresponding `BUILD_LOG.md` entries.
+
+**Why `/negotiate` reports `credential_scope` and `/products/{id}` reports
+`spend_cap` for what is functionally the same per-transaction bound**:
+these are two different rules that happen to enforce the identical numeric
+value (`max_single_transaction_paise`, 500,000 paise) by design, not the
+same rule wearing two names.
+
+- `/products/{id}`'s anonymous, unsigned caller has no credential at all,
+  so `TrustGuard._check_credential_scope` is skipped entirely — the only
+  thing that can catch an over-cap amount is `PolicyEngine._check_spend_cap`
+  (rule `spend_cap`), run inside `_authorize_common`.
+- `/negotiate`'s Buyer Agent is signed and holds a real, issued credential.
+  That credential's `max_spend_paise` is deliberately set equal to
+  `settings.max_single_transaction_paise` at issuance
+  (`BuyerAgent.__init__`) — a platform-level agent isn't given more
+  latitude than the platform cap itself. `TrustGuard.authorize_purchase`
+  checks credential scope (`_check_credential_scope`, rule
+  `credential_scope`) as a hard reject *before* `_authorize_common` (and
+  therefore before `PolicyEngine`) ever runs, so for this Buyer Agent the
+  two checks trip at exactly the same paise amount, and `credential_scope`
+  always wins the race since it runs first. `spend_cap` remains reachable
+  on `/negotiate` in principle, but only for a hypothetical agent whose
+  credential allows *more* than the platform cap — no such agent exists in
+  this codebase today.
+- In short: `credential_scope` answers "was this specific agent ever
+  authorized to spend this much" (hard reject, no exceptions);
+  `spend_cap` answers "is this within the platform's normal bounds
+  regardless of who's asking" (escalated, since it could still be
+  legitimate). They're independent rules that happen to share a number
+  here because the Buyer Agent's credential was scoped to match the
+  platform default — not a structural guarantee, just this deployment's
+  configuration.
 
 ### Threat: malicious catalog data
 
@@ -286,6 +344,16 @@ success/failure. A persistent failure still surfaces as a clear rejection
 - **Admin kill-switch auth is a single shared static key
   (`X-ADMIN-KEY`)** — adequate for a single-operator hackathon deployment,
   not a substitute for per-operator auth/audit logging in a real deployment.
+- **Idempotency has no live-production evidence yet** — every other
+  TrustGuard rule (kill switch, spend cap/credential scope, velocity,
+  daily spend) has been re-verified against the live Render deployment
+  with real request/response transcripts; idempotency dedup
+  (`IdempotencyStore` / a repeated `idempotency_key` short-circuiting to a
+  cached result without a second charge) is currently proven only by local
+  tests (`test_genuine_duplicate_purchase_results_in_exactly_one_charge`
+  and friends). Same code path, same shared `TrustGuard` — no reason to
+  expect it behaves differently live — but it hasn't actually been fired
+  against production the way the others have.
 
 ## Out of scope for a hackathon demo
 

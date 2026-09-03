@@ -1,5 +1,93 @@
 # BUILD_LOG.md
 
+## 2026-09-04 — Day 4 Part 1: live-verified max_daily_spend_paise on both endpoints (closes the last TrustGuard gap)
+
+**Requested**: the previous entry below wired `max_daily_spend_paise` into
+both live endpoints but only ever tested it locally. Close that gap with
+real request/response evidence, same rigor as the kill switch/spend
+cap/velocity live tests, plus explain the `credential_scope` vs `spend_cap`
+naming difference clearly enough to be self-explanatory.
+
+**`POST /negotiate` (fake Razorpay rail — real accumulation is cheap)**:
+the shared, persistent Buyer Agent (`get_buyer_agent()`, one instance for
+the process's lifetime) was walked through six genuine successful
+purchases: one mouse pad (59,900 paise) then five mechanical keyboards
+(349,900 paise each), totalling 1,809,400 paise of real spend in its
+trailing 24h window. A seventh purchase attempt (another keyboard,
+349,900 paise, otherwise fully valid — correct signature, fresh nonce, in
+credential scope, in policy bounds, room left in velocity) was then
+rejected, reproduced five times in a row with identical numbers:
+
+```
+POST /negotiate {"goal_text":"mechanical keyboard hot-swap 65 percent","budget_paise":349900}
+  → {"success":false,"reason":"purchase escalated for review by trust layer (daily_spend):
+      agent 'buyer-079629cd' would exceed its daily spend cap: 1809400 paise already spent
+      in the last 24h + 349900 paise requested = 2159300 paise, cap is
+      max_daily_spend_paise=2000000 paise", ...} — 200 (negotiate always returns HTTP 200;
+      the rejection is in the body)
+```
+
+**`GET /products/{id}` (real Razorpay client)**: genuinely accumulating
+2,000,000 paise of real spend here means completing that many real
+Razorpay test-mode Checkout payments, which this codebase deliberately
+never automates past Razorpay's PerimeterX/HUMAN bot detection (see
+`docs/DECISIONS.md`, 2026-09-02) — no headless/scripted click-through, by
+design. Rather than either asking for several manual checkouts or silently
+skipping this endpoint, `MAX_DAILY_SPEND_PAISE` was temporarily lowered to
+`1000` via the Render dashboard env var (no code change, no
+commit/deploy from this session) and the service redeployed. With the cap
+that low, a single request's amount alone exceeds it, so the exact same
+`DailySpendTracker.check` / `daily_spend` rejection code path fires before
+any Razorpay call is made — same trick already used for the live
+`spend_cap` test (a fabricated `X-PAYMENT` payload never gets far enough
+to be looked up):
+
+```
+GET /products/mechanical-keyboard-65  (X-PAYMENT header present, fabricated payment_id)
+  → {"error":"purchase escalated for review by trust layer (daily_spend): agent
+      '157.49.122.108' would exceed its daily spend cap: 0 paise already spent in the
+      last 24h + 349900 paise requested = 349900 paise, cap is max_daily_spend_paise=1000
+      paise"} — 429
+```
+Reproduced with a second, differently-fabricated payment_id — identical
+result. Confirmed the kill switch was independently `false` throughout
+(`GET /admin/kill-switch`). `MAX_DAILY_SPEND_PAISE` was then restored to
+`2000000` on Render and redeployed, returning the live cap to its normal
+value.
+
+**New data point**: `daily_spend` and `velocity` rejections return HTTP
+`429`; `spend_cap`/`category` rejections return `402`
+(`MerchantAgent.handle_request`: `status = 429 if auth.rule in
+("velocity", "daily_spend") else 402`) — not previously called out in the
+live-verification record.
+
+**Why `/negotiate` says `credential_scope` and `/products/{id}` says
+`spend_cap` for what looks like the same protection** (asked directly,
+answered in full in `docs/THREAT_MODEL.md`'s "Trust/safety layer" section
+— summary here): they're two different rules that happen to enforce the
+identical number (`max_single_transaction_paise` = 500,000 paise) for this
+deployment specifically. `/products/{id}`'s anonymous caller has no
+credential, so the credential-scope check is skipped entirely and only the
+platform-wide `PolicyEngine` spend_cap can catch it. `/negotiate`'s Buyer
+Agent *does* have a credential, and that credential's `max_spend_paise`
+was deliberately issued equal to the platform cap (`BuyerAgent.__init__`)
+— so the credential-scope check, which runs earlier in
+`TrustGuard.authorize_purchase` and is a hard reject rather than an
+escalation, always wins the race for this agent. Not a naming
+inconsistency — a structural consequence of one endpoint having a
+credential to check and the other not.
+
+**Closed.** Every TrustGuard rule is now backed by real production
+request/response evidence with matching rigor across both live
+endpoints — kill switch, spend cap/credential scope, velocity, and now
+daily spend cap. The one remaining gap: **idempotency has never been
+fired against production**, only covered by local tests — same shared
+code path as everything else here, no reason to expect divergent
+behavior, but it hasn't actually been proven live the way the rest have.
+Documented as an explicit named gap in `docs/THREAT_MODEL.md` rather than
+left implicit. Day 4 Part 1 is complete; next is the scenario test harness
+(Part 2).
+
 ## 2026-09-04 — Full TrustGuard on GET /products/{id}, and a new POST /negotiate endpoint
 
 **Requested**: the kill-switch fix directly below closed one narrow gap
