@@ -166,3 +166,93 @@ def test_upsell_offer_ignores_product_outside_related_whitelist():
     result = agent.handle_request("mechanical-keyboard-65")
     assert result.status_code == 402
     assert result.body.get("upsell") is None
+
+
+# -- anonymous (caller_id) trust wiring: the GET /products/{id} path -----------
+#
+# Reproduces, at the MerchantAgent level, the exact gap found by testing
+# against the live Render deployment: /products/{id} previously ran no
+# trust checks beyond the kill switch. `caller_id` is only set when a real
+# HTTP caller (no signed agent credential) is asking -- see main.py.
+
+
+class CountingFakeRazorpayClient(FakeRazorpayClient):
+    def __init__(self, payment: dict | None = None, signature_valid: bool = True):
+        super().__init__(payment, signature_valid)
+        self.fetch_calls = 0
+
+    def fetch_payment(self, payment_id: str) -> dict:
+        self.fetch_calls += 1
+        return self.payment
+
+
+def test_anonymous_purchase_over_spend_cap_is_rejected_before_verifying_payment():
+    settings = get_settings()
+    razorpay = CountingFakeRazorpayClient(payment={"order_id": "order_1", "amount": 1_899_900, "status": "captured"})
+    agent = MerchantAgent(razorpay_client=razorpay, llm_client=FakeLLMClient())
+
+    # monitor-27-1440p-144hz lists at 1,899,900 paise -- well above
+    # max_single_transaction_paise (500,000 by default).
+    header = _make_x_payment_header("/products/monitor-27-1440p-144hz", payment_id="pay_over_cap")
+    result = agent.handle_request("monitor-27-1440p-144hz", header, caller_id="1.2.3.4")
+
+    assert result.status_code == 402
+    assert "spend_cap" in result.body["error"]
+    assert razorpay.fetch_calls == 0, "a rejected purchase must never reach payment verification"
+
+
+def test_anonymous_purchase_duplicate_payment_id_is_deduped():
+    product = get_catalog().get("mechanical-keyboard-65")
+    razorpay = CountingFakeRazorpayClient(
+        payment={"order_id": "order_1", "amount": product.price_paise, "status": "captured", "email": "buyer@example.com"}
+    )
+    agent = MerchantAgent(razorpay_client=razorpay, llm_client=FakeLLMClient())
+    header = _make_x_payment_header("/products/mechanical-keyboard-65", payment_id="pay_dup")
+
+    first = agent.handle_request("mechanical-keyboard-65", header, caller_id="1.2.3.4")
+    assert first.status_code == 200
+    assert razorpay.fetch_calls == 1
+
+    second = agent.handle_request("mechanical-keyboard-65", header, caller_id="1.2.3.4")
+    assert second.status_code == 200
+    assert second.body["transaction"] == first.body["transaction"]
+    assert razorpay.fetch_calls == 1, "duplicate payment_id must not re-verify against Razorpay a second time"
+
+
+def test_anonymous_purchase_velocity_limit_fires_per_caller():
+    settings = get_settings()
+    product = get_catalog().get("mechanical-keyboard-65")
+    razorpay = CountingFakeRazorpayClient(
+        payment={"order_id": "order_1", "amount": product.price_paise, "status": "captured"}
+    )
+    agent = MerchantAgent(razorpay_client=razorpay, llm_client=FakeLLMClient())
+
+    for i in range(settings.max_purchases_per_minute):
+        header = _make_x_payment_header("/products/mechanical-keyboard-65", payment_id=f"pay_velo_{i}")
+        result = agent.handle_request("mechanical-keyboard-65", header, caller_id="9.9.9.9")
+        assert result.status_code == 200, f"attempt {i} unexpectedly failed: {result.body}"
+
+    header = _make_x_payment_header(
+        "/products/mechanical-keyboard-65", payment_id=f"pay_velo_{settings.max_purchases_per_minute}"
+    )
+    result = agent.handle_request("mechanical-keyboard-65", header, caller_id="9.9.9.9")
+    assert result.status_code == 429
+    assert "velocity" in result.body["error"]
+
+    # A different caller is unaffected.
+    header = _make_x_payment_header("/products/mechanical-keyboard-65", payment_id="pay_velo_other_caller")
+    result = agent.handle_request("mechanical-keyboard-65", header, caller_id="1.1.1.1")
+    assert result.status_code == 200
+
+
+def test_signed_buyer_agent_flow_is_unaffected_by_anonymous_trust_wiring():
+    """caller_id defaults to None for the in-process BuyerAgent flow -- it
+    already ran the full signed TrustGuard.authorize_purchase before
+    calling handle_request, so this leg must not re-gate it a second time
+    under a different (anonymous) accounting bucket."""
+    product = get_catalog().get("mechanical-keyboard-65")
+    razorpay = FakeRazorpayClient(payment={"order_id": "order_1", "amount": product.price_paise, "status": "captured"})
+    agent = MerchantAgent(razorpay_client=razorpay, llm_client=FakeLLMClient())
+    header = _make_x_payment_header("/products/mechanical-keyboard-65", payment_id="pay_signed_1")
+    result = agent.handle_request("mechanical-keyboard-65", header)  # no caller_id
+    assert result.status_code == 200

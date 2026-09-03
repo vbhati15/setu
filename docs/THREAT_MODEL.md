@@ -165,6 +165,52 @@ transactions.
   endpoint never went through `TrustGuard` at all. Fixed the same day; see
   the corresponding `BUILD_LOG.md` entry for the full incident.
 
+### The kill-switch gap, closed properly: full TrustGuard on every live HTTP endpoint
+
+The 2026-09-04 incident above was fixed narrowly (kill switch only) under
+time pressure. That was itself an instance of the same class of gap it was
+fixing: a trust check that exists in code but doesn't reach the endpoint
+production traffic actually uses. Closed fully the same day:
+
+- **`GET /products/{id}`** (real Razorpay client, any unauthenticated
+  caller): the X-PAYMENT-verification leg now runs
+  `TrustGuard.authorize_anonymous_purchase` — idempotency, velocity, daily
+  spend, and policy bounds (spend cap, category), bucketed by a
+  caller-derived identity (`X-Forwarded-For` / client IP, see `main.py`'s
+  `_caller_id`) since there is no signed credential on this endpoint. This
+  is intentionally weaker than the signed path below — an unauthenticated
+  caller can rotate IPs to dodge the per-caller accounting, and there is no
+  credential-scope check (there is no credential). What it does guarantee:
+  a single calling context can no longer bypass spend caps, hammer the
+  endpoint past velocity limits, or double-process a repeated payment
+  attempt, and the kill switch (already fixed) still halts everything
+  regardless. See `test_over_spend_cap_purchase_is_rejected_before_any_razorpay_call`
+  (`test_products_endpoint_trust.py`) and the `test_anonymous_purchase_*`
+  tests in `test_merchant_agent.py`/`test_trust_guard.py`.
+- **`POST /negotiate`** (new endpoint, fake Razorpay client — see below):
+  runs the real `BuyerAgent.negotiate_and_purchase` flow, which already
+  signs every purchase attempt with an issued credential and calls the full
+  `TrustGuard.authorize_purchase` (signature, credential scope,
+  idempotency, velocity, daily spend, policy bounds) before ever touching
+  the payment rail — no separate wiring was needed here, only exposing the
+  existing signed-agent flow over HTTP. See `test_negotiate_endpoint.py`.
+- **Both endpoints share one `TrustGuard` instance** (`main.py`'s
+  `get_trust_guard()`), which is what makes the kill switch — and
+  velocity/idempotency/daily-spend accounting — genuinely global rather
+  than per-endpoint. Verified: `test_negotiate_blocked_by_global_kill_switch`
+  activates the kill switch via the shared admin endpoint and confirms
+  `/negotiate` is blocked by it, not just `/products/{id}`.
+
+**`POST /negotiate` itself**: previously the Buyer/Merchant Zeuthen
+negotiation flow only ran via a local script
+(`scripts/negotiation_demo.py`) — no deployed endpoint exercised it at all.
+It now runs against a `FakeRazorpayClient` shared between the negotiation's
+Buyer and Merchant Agent instances (same reasoning as the local script: an
+unattended, HTTP-triggered negotiation must not drive the real Checkout
+widget), completely separate from `GET /products/{id}`'s real-Razorpay
+merchant instance — the two are different `MerchantAgent` objects that
+happen to share the one `TrustGuard`.
+
 ### Threat: malicious catalog data
 
 A compromised or careless catalog entry (product name/description/price)

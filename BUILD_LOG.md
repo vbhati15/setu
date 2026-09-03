@@ -1,5 +1,85 @@
 # BUILD_LOG.md
 
+## 2026-09-04 — Full TrustGuard on GET /products/{id}, and a new POST /negotiate endpoint
+
+**Requested**: the kill-switch fix directly below closed one narrow gap
+(kill switch only). Two follow-ups to close the same class of gap fully:
+(1) wire the *entire* TrustGuard — spend caps, velocity, idempotency, daily
+spend — into `GET /products/{id}`, not just the kill switch; (2) build a
+real `POST /negotiate` HTTP endpoint for the Buyer/Merchant negotiation
+flow, which until now only existed as a local script, and route it through
+the full TrustGuard too.
+
+**1. `GET /products/{id}` — full TrustGuard wiring:**
+
+Added `TrustGuard.authorize_anonymous_purchase` (`backend/app/trust/guard.py`)
+— the same checks as the signed `authorize_purchase` path (idempotency,
+velocity, daily spend, policy bounds) minus signature/credential/replay
+verification, since this endpoint has no signed agent identity. Shares the
+underlying `IdempotencyStore`/`VelocityLimiter`/`DailySpendTracker`/
+`PolicyEngine` via a new `_authorize_common` refactor. Bucketed by a
+caller-derived identity — `X-Forwarded-For` header or client IP (`main.py`
+`_caller_id`) — explicitly weaker than the signed path (spoofable/rotatable
+by the caller), documented as such in `THREAT_MODEL.md`.
+
+`MerchantAgent.handle_request` gained a `caller_id` parameter: `None`
+(default) means the caller already ran the full signed
+`TrustGuard.authorize_purchase` before calling this (the in-process
+BuyerAgent flow) and this leg runs unguarded a second time since it was
+already cleared; a real value means an unauthenticated HTTP caller, and the
+anonymous check runs first. `GET /products/{id}` always passes one now.
+
+**2. `POST /negotiate` — new endpoint:**
+
+Runs `BuyerAgent.negotiate_and_purchase` over HTTP for the first time.
+Needed three new singletons in `main.py`: `get_trust_guard()` (one shared
+`TrustGuard`), `get_negotiation_razorpay()` (a `FakeRazorpayClient`, same
+reasoning as `negotiation_demo.py` — unattended flows never drive the real
+Checkout widget), and `get_negotiation_merchant_agent()` /
+`get_buyer_agent()` (a second `MerchantAgent` using the fake Razorpay
+client, and a persistent `BuyerAgent`, both sharing `get_trust_guard()`
+with the real-Razorpay `get_merchant_agent()` used by `/products/{id}`).
+Sharing one `TrustGuard` across both merchant instances is what makes the
+kill switch (and velocity/spend/idempotency accounting) genuinely global
+rather than per-endpoint — this was deliberate, not incidental; two
+independent `TrustGuard`s would have reintroduced exactly the same class of
+gap this work is closing. No new trust-checking code was needed for
+`/negotiate` itself: `BuyerAgent._pay_and_collect` already signs every
+purchase attempt and runs the full `TrustGuard.authorize_purchase` before
+touching the payment rail — exposing the existing flow over HTTP was the
+whole fix.
+
+**New tests** (122 passing, up from 105): `test_anonymous_purchase_*` in
+`test_trust_guard.py` (guard-level), `test_anonymous_purchase_*` /
+`test_signed_buyer_agent_flow_is_unaffected_by_anonymous_trust_wiring` in
+`test_merchant_agent.py` (proves the signed in-process path is unaffected
+by the new anonymous wiring), `test_products_endpoint_trust.py` (HTTP,
+`TestClient` — spend-cap rejection and kill-switch priority, both of which
+short-circuit before any real Razorpay call so they don't need network
+access), and `test_negotiate_endpoint.py` (HTTP, `TestClient` with a fake
+LLM client — comfortable-budget success, invalid-budget 422, blocked by the
+shared kill switch, and rejected by credential scope for an
+over-cap-budget negotiation).
+
+**Verified locally:**
+- `pytest backend/tests -v` → 122/122 passing.
+- `uvicorn backend.app.main:app` boots cleanly from the repo root (Render's
+  actual invocation shape) with the new imports (`BuyerAgent`,
+  `FakeRazorpayClient`, `TrustGuard`) — `/health`, `/catalog`,
+  `/admin/kill-switch` all still `200`; `POST /negotiate` with an invalid
+  budget correctly `422`s without making any LLM/network call.
+
+**Not yet verified against live production** — this needs the working tree
+committed and pushed (explicitly not done by me this session, per
+instruction) and Render redeployed first. Once that's done, re-run the same
+curl-based approach used for the kill-switch fix: activate the kill switch
+and confirm both `/products/{id}` and (new) `/negotiate` are blocked;
+deactivate and confirm both resume; and specifically exercise spend-cap and
+velocity-limit enforcement live (not just kill switch), since those were
+never checked against production before. Do not consider this entry closed
+until that live evidence is captured here, the same standard applied to the
+kill-switch fix above.
+
 ## 2026-09-04 — Found and fixed: kill switch didn't gate the only live HTTP transaction endpoint
 
 **Requested**: verify the Day 3 kill switch actually works against the live

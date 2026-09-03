@@ -210,3 +210,105 @@ def test_kill_switch_deactivation_allows_requests_again():
     request = build_signed_request(identity, credential, {"price_paise": 1000}, "idem-1")
     result = guard.authorize_purchase(request, category="peripherals")
     assert result.approved
+
+
+# -- authorize_anonymous_purchase: for HTTP callers with no signed identity --
+
+def test_anonymous_purchase_within_bounds_is_approved():
+    guard = _guard()
+    result = guard.authorize_anonymous_purchase(
+        agent_id="1.2.3.4", idempotency_key="anon-1", price_paise=1000, category="peripherals"
+    )
+    assert result.approved
+    assert not result.is_replay
+
+
+def test_anonymous_purchase_kill_switch_blocks():
+    guard = _guard()
+    guard.kill_switch.activate("test")
+    result = guard.authorize_anonymous_purchase(
+        agent_id="1.2.3.4", idempotency_key="anon-1", price_paise=1000, category="peripherals"
+    )
+    assert not result.approved
+    assert result.rule == "kill_switch"
+
+
+def test_anonymous_purchase_over_spend_cap_is_escalated():
+    settings = get_settings()
+    guard = _guard()
+    result = guard.authorize_anonymous_purchase(
+        agent_id="1.2.3.4",
+        idempotency_key="anon-1",
+        price_paise=settings.max_single_transaction_paise + 1,
+        category="peripherals",
+    )
+    assert not result.approved
+    assert result.escalate
+    assert result.rule == "spend_cap"
+
+
+def test_anonymous_purchase_idempotency_key_returns_cached_result():
+    guard = _guard()
+    first = guard.authorize_anonymous_purchase(
+        agent_id="1.2.3.4", idempotency_key="anon-dup", price_paise=1000, category="peripherals"
+    )
+    assert first.approved and not first.is_replay
+    guard.record_attempt("1.2.3.4")
+    guard.store_result("anon-dup", "cached-response-object")
+
+    second = guard.authorize_anonymous_purchase(
+        agent_id="1.2.3.4", idempotency_key="anon-dup", price_paise=1000, category="peripherals"
+    )
+    assert second.approved
+    assert second.is_replay is True
+    assert second.cached_result == "cached-response-object"
+
+
+def test_anonymous_purchase_velocity_limit_fires_per_caller_bucket():
+    settings = get_settings()
+    guard = _guard()
+    for i in range(settings.max_purchases_per_minute):
+        result = guard.authorize_anonymous_purchase(
+            agent_id="1.2.3.4", idempotency_key=f"anon-{i}", price_paise=1000, category="peripherals"
+        )
+        assert result.approved, f"attempt {i} unexpectedly rejected: {result.reason}"
+        guard.record_attempt("1.2.3.4")
+
+    result = guard.authorize_anonymous_purchase(
+        agent_id="1.2.3.4",
+        idempotency_key=f"anon-{settings.max_purchases_per_minute}",
+        price_paise=1000,
+        category="peripherals",
+    )
+    assert not result.approved
+    assert result.rule == "velocity"
+
+    # A different caller bucket is unaffected.
+    other = guard.authorize_anonymous_purchase(
+        agent_id="5.6.7.8", idempotency_key="anon-other", price_paise=1000, category="peripherals"
+    )
+    assert other.approved
+
+
+def test_anonymous_purchase_daily_spend_cap_fires_across_a_sequence():
+    settings = get_settings()
+    guard = _guard()
+    price_paise = settings.max_single_transaction_paise
+    num_that_fit = settings.max_daily_spend_paise // price_paise
+
+    for i in range(num_that_fit):
+        result = guard.authorize_anonymous_purchase(
+            agent_id="1.2.3.4", idempotency_key=f"anon-daily-{i}", price_paise=price_paise, category="peripherals"
+        )
+        assert result.approved, f"attempt {i} unexpectedly rejected: {result.reason}"
+        guard.record_attempt("1.2.3.4")
+        guard.record_spend("1.2.3.4", price_paise)
+
+    result = guard.authorize_anonymous_purchase(
+        agent_id="1.2.3.4",
+        idempotency_key=f"anon-daily-{num_that_fit}",
+        price_paise=price_paise,
+        category="peripherals",
+    )
+    assert not result.approved
+    assert result.rule == "daily_spend"

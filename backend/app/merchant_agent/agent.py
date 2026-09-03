@@ -118,6 +118,7 @@ class MerchantAgent:
         product_id: str,
         x_payment_header: str | None = None,
         agreed_price_paise: int | None = None,
+        caller_id: str | None = None,
     ) -> AgentResponse:
         """Handle one x402 resource request. `product_id` and
         `x_payment_header` are both untrusted client input.
@@ -126,7 +127,20 @@ class MerchantAgent:
         negotiation (see `negotiation_party`) -- when present, payment is
         verified against that agreed price instead of the catalog list
         price. It is never taken from client input; only code that already
-        ran a Zeuthen negotiation to completion passes it."""
+        ran a Zeuthen negotiation to completion passes it.
+
+        `caller_id` distinguishes two trust-checking regimes:
+          - None (the default): the caller already ran the full signed
+            `TrustGuard.authorize_purchase` before calling this (see
+            `BuyerAgent._pay_and_collect`) -- the payment-verification leg
+            here runs unguarded a second time, since it was already cleared.
+          - A caller-derived identity (e.g. client IP): this is an
+            unauthenticated HTTP caller with no signed credential (the
+            `GET /products/{id}` endpoint always passes one) -- the
+            payment-verification leg runs through
+            `TrustGuard.authorize_anonymous_purchase` first (idempotency,
+            velocity, daily spend, policy bounds), bucketed by `caller_id`.
+        Both regimes are gated by the kill-switch check above regardless."""
         if self.trust_guard.kill_switch.is_active:
             reason = self.trust_guard.kill_switch.reason or "no reason given"
             logger.warning("request rejected: kill switch active (reason=%s)", reason)
@@ -159,27 +173,52 @@ class MerchantAgent:
                 error="X-PAYMENT resource does not match requested product",
             )
 
+        idempotency_key = f"http:{resource}:{payment_header.payload.payment_id}"
+        if caller_id is not None:
+            auth = self.trust_guard.authorize_anonymous_purchase(
+                agent_id=caller_id,
+                idempotency_key=idempotency_key,
+                price_paise=expected_price_paise,
+                category=product.category,
+            )
+            if not auth.approved:
+                kind = "escalated for review" if auth.escalate else "rejected"
+                error = f"purchase {kind} by trust layer ({auth.rule}): {auth.reason}"
+                logger.warning("anonymous purchase rejected: caller=%s rule=%s", caller_id, auth.rule)
+                status = 429 if auth.rule in ("velocity", "daily_spend") else 402
+                return AgentResponse(status_code=status, body={"error": error})
+            if auth.is_replay:
+                return auth.cached_result
+
         ok, reason, payer = self._verify_payment(product, payment_header, expected_price_paise)
         if not ok:
-            return self._payment_required(product, resource, expected_price_paise=expected_price_paise, error=reason)
+            result = self._payment_required(product, resource, expected_price_paise=expected_price_paise, error=reason)
+        else:
+            result = AgentResponse(
+                status_code=200,
+                body={
+                    "resource": resource,
+                    "product_id": product.id,
+                    "name": product.name,
+                    "access_granted": True,
+                    "transaction": payment_header.payload.payment_id,
+                },
+                headers={
+                    "X-PAYMENT-RESPONSE": encode_x_payment_response(
+                        success=True,
+                        transaction=payment_header.payload.payment_id,
+                        payer=payer,
+                    )
+                },
+            )
 
-        return AgentResponse(
-            status_code=200,
-            body={
-                "resource": resource,
-                "product_id": product.id,
-                "name": product.name,
-                "access_granted": True,
-                "transaction": payment_header.payload.payment_id,
-            },
-            headers={
-                "X-PAYMENT-RESPONSE": encode_x_payment_response(
-                    success=True,
-                    transaction=payment_header.payload.payment_id,
-                    payer=payer,
-                )
-            },
-        )
+        if caller_id is not None:
+            self.trust_guard.record_attempt(caller_id)
+            if ok:
+                self.trust_guard.record_spend(caller_id, expected_price_paise)
+            self.trust_guard.store_result(idempotency_key, result)
+
+        return result
 
     def min_acceptable_price(self, product: Product) -> int:
         """Merchant's reservation price: won't sell below this. A configured

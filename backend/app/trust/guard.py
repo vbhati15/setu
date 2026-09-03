@@ -21,6 +21,10 @@ before a charge is attempted. Runs, in order:
      silently dropped.
 
 Every rejection is logged with agent id, rule, and reason.
+
+`authorize_anonymous_purchase` runs the same steps minus signature/
+credential/replay checks (2-4 above), for HTTP callers with no signed
+identity -- see its docstring.
 """
 from __future__ import annotations
 
@@ -105,30 +109,33 @@ class TrustGuard:
         if not ok:
             return self._reject(request.agent_id, "credential_scope", reason)
 
-        cached = self.idempotency_store.get(request.idempotency_key)
-        if cached is not None:
-            return AuthorizationResult(approved=True, is_replay=True, cached_result=cached.result)
+        return self._authorize_common(request.agent_id, request.idempotency_key, price_paise, category)
 
-        ok, reason = self.velocity_limiter.check(request.agent_id)
-        if not ok:
-            return self._reject(request.agent_id, "velocity", reason, escalate=True)
+    def authorize_anonymous_purchase(
+        self, *, agent_id: str, idempotency_key: str, price_paise: int, category: str
+    ) -> AuthorizationResult:
+        """For HTTP callers with no signed agent identity or credential --
+        today, that's `GET /products/{id}`'s X-PAYMENT-verification leg,
+        which any client (not just an onboarded Buyer Agent) can call.
 
-        ok, reason = self.daily_spend_tracker.check(
-            request.agent_id, price_paise, self.settings.max_daily_spend_paise
-        )
-        if not ok:
-            return self._reject(request.agent_id, "daily_spend", reason, escalate=True)
-
-        decision = self.policy_engine.evaluate_purchase(price_paise=price_paise, category=category)
-        if not decision.approved:
-            logger.warning(
-                "purchase escalated: agent=%s rule=%s reason=%s", request.agent_id, decision.rule, decision.reason
+        Runs every check that doesn't require a credential: kill switch,
+        idempotency, velocity, daily spend, and policy bounds. Skips
+        signature verification, replay-nonce tracking, and credential-scope
+        checking, since there is no signed envelope or credential to check
+        those against. `agent_id` here is a caller-derived bucket (e.g.
+        client IP) for rate/spend accounting, not an onboarded agent's
+        identity -- so this intentionally provides weaker guarantees than
+        `authorize_purchase` (an unauthenticated caller can rotate IPs to
+        dodge velocity/daily-spend accounting; `authorize_purchase`'s
+        credential-scope check has no equivalent bypass). See
+        `docs/THREAT_MODEL.md` for what this does and does not cover."""
+        if self.kill_switch.is_active:
+            return self._reject(
+                agent_id, "kill_switch",
+                f"kill switch is active ({self.kill_switch.reason or 'no reason given'}); "
+                "no new transactions are being processed",
             )
-            return AuthorizationResult(
-                approved=False, escalate=decision.escalate, reason=decision.reason, rule=decision.rule
-            )
-
-        return AuthorizationResult(approved=True)
+        return self._authorize_common(agent_id, idempotency_key, price_paise, category)
 
     def record_attempt(self, agent_id: str) -> None:
         self.velocity_limiter.record(agent_id)
@@ -142,6 +149,33 @@ class TrustGuard:
         self.idempotency_store.store(idempotency_key, result)
 
     # -- internals ------------------------------------------------------------
+
+    def _authorize_common(
+        self, agent_id: str, idempotency_key: str, price_paise: int, category: str
+    ) -> AuthorizationResult:
+        """Checks shared by both authorization paths, once identity/scope
+        (or the deliberate absence of it) has already been settled:
+        idempotency, velocity, daily spend, policy bounds."""
+        cached = self.idempotency_store.get(idempotency_key)
+        if cached is not None:
+            return AuthorizationResult(approved=True, is_replay=True, cached_result=cached.result)
+
+        ok, reason = self.velocity_limiter.check(agent_id)
+        if not ok:
+            return self._reject(agent_id, "velocity", reason, escalate=True)
+
+        ok, reason = self.daily_spend_tracker.check(agent_id, price_paise, self.settings.max_daily_spend_paise)
+        if not ok:
+            return self._reject(agent_id, "daily_spend", reason, escalate=True)
+
+        decision = self.policy_engine.evaluate_purchase(price_paise=price_paise, category=category)
+        if not decision.approved:
+            logger.warning("purchase escalated: agent=%s rule=%s reason=%s", agent_id, decision.rule, decision.reason)
+            return AuthorizationResult(
+                approved=False, escalate=decision.escalate, reason=decision.reason, rule=decision.rule
+            )
+
+        return AuthorizationResult(approved=True)
 
     def _verify_signature_and_credential(self, request: SignedRequest) -> tuple[bool, str | None]:
         if not request.signature:
