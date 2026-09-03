@@ -1,5 +1,109 @@
 # BUILD_LOG.md
 
+## 2026-09-04 — Day 4 Part 2: scenario test harness, closing idempotency's live-verification gap
+
+**Requested**: build a scenario test harness that runs real, randomized
+scenarios against the live `/negotiate` and `/products/{id}` endpoints on
+Render (not local scripts), covering comfortable/tight-budget negotiation,
+no-match graceful failure, a deliberate duplicate-idempotency-key test
+(closing the one TrustGuard rule Part 1 left without live evidence), and
+deliberate velocity/spend-limit breaches -- with structured JSONL evidence
+and an honest final summary.
+
+**Built**: `backend/app/scripts/scenario_harness.py` -- black-box (HTTP
+only, no imports from the app itself, so a pass here is evidence about
+real production behavior, not internals), fixed-seed randomization
+(`SEED=20260904`) for reproducibility, structured JSONL logging per HTTP
+call (`harness_results/run_<timestamp>.jsonl`), and a local
+velocity-window mirror that self-throttles the "normal" scenarios so
+accidental rate-limit hits don't muddy the intentional ones.
+
+**First run crashed** (`httpx.ReadTimeout`) on the first tight-budget
+negotiation -- the original 60s client timeout was too short for a real
+multi-round Zeuthen negotiation with live Gemini phrasing calls per round
+(some rounds took 100k+ ms). Fixed: read timeout raised to 240s, and both
+HTTP helpers now catch network errors and log them as a distinct outcome
+instead of crashing the whole run. Re-ran clean.
+
+**Ran 22 named scenarios (37 total HTTP calls) against
+`https://setu-59l6.onrender.com`**:
+
+- **8 comfortable-budget** -- all compliant (real purchases, real upsell
+  decisions made live by Gemini, not scripted).
+- **6 tight-budget** (real multi-round Zeuthen negotiation, live LLM
+  phrasing) -- 4 compliant, agreeing at 70,484-149,630 paise after 11
+  rounds each. The last 2 (`tight-5`, `tight-6`) were **organically
+  escalated by `daily_spend`** -- real cumulative spend from the earlier
+  scenarios crossed `max_daily_spend_paise` (2,000,000) mid-run, entirely
+  unplanned. Left as-is rather than reordered, since a real agent hitting
+  its own daily cap mid-session from a sequence of individually-legitimate
+  purchases is exactly the scenario this rule exists to catch.
+- **4 no-viable-match** -- all failed gracefully (`200`, clear reason,
+  no crash), confirming `BuyerAgent._find_candidate_product` returning
+  `None` never produces anything worse than a clean `success:false`.
+- **1 deliberate credential-scope breach** (monitor at 1,899,900 paise
+  against a comfortably-large budget) -- correctly rejected before any
+  charge.
+- **1 deliberate duplicate-idempotency-key scenario** (`GET
+  /products/{id}`, the flagship demo -- see below) -- **closes Part 1's
+  named gap**. 6 identical calls (same fabricated `payment_id`, hence the
+  same server-derived `idempotency_key`) returned byte-identical bodies;
+  the first took 5,350ms (real Razorpay lookup), the next 5 averaged
+  ~380ms (cache hit, no repeat Razorpay call); a control call with a fresh
+  key was **not** blocked by velocity, proving the 6 duplicates cost zero
+  velocity budget between them.
+- **1 deliberate velocity-limit burst** (10 rapid identical purchases,
+  safety-capped) -- **did not** independently re-trip `velocity`: by this
+  point `daily_spend` had already tripped (see `tight-5/6` above), and a
+  daily-spend-blocked attempt never increments the velocity counter
+  (`BuyerAgent._pay_and_collect` only calls `record_purchase_attempt`
+  after an *approved* purchase reaches the payment rail), so all 10 burst
+  attempts hit `daily_spend` first. `velocity` remains live-proven from
+  Part 1's manual test (2026-09-04, four `/negotiate` calls), just not
+  re-confirmed by this specific run. Named honestly as a run-ordering
+  artifact, not silently glossed over -- see `docs/THREAT_MODEL.md`.
+- **1 deliberate daily-spend burst** -- fired immediately on its first
+  attempt (cap already well past), re-confirming the rule under scripted
+  conditions, not just the earlier manual curl test.
+
+**Real, honest summary** (from `run_20260904-021007_summary.json`, not a
+claim):
+
+```
+Named scenarios: 22    Total HTTP calls logged: 37
+Outcomes across all 37 calls:
+  compliant: 12, escalated: 13, graceful_no_match: 4, rejected: 1, failed_verification: 7
+TrustGuard rules observed firing: daily_spend: 13, credential_scope: 1
+```
+At the scenario level: 12/22 compliant outright, 2 correctly escalated by
+`daily_spend` organically mid-negotiation, 4/4 no-match scenarios failed
+gracefully, 1/1 credential-scope breach correctly rejected, 1/1
+idempotency demo passed (byte-identical cached responses + zero velocity
+cost, proven above), 1/1 daily-spend burst correctly re-confirmed the
+cap, and 1/1 velocity burst was inconclusive for `velocity` specifically
+(pre-empted by `daily_spend`, itself a correct block) but produced no
+unexpected failures and no breaches -- 0 crashes, 0 network errors after
+the timeout fix, 0 cases of a rule failing to fire when it should have.
+
+**Flagship demo scenario**: the duplicate-idempotency-key test above --
+recommended for recording, since it has a clean before/during/after shape
+(first call: real 5.3s Razorpay round-trip and a normal failure; 6
+duplicates: instant, byte-identical cached responses; control call: a
+fresh key immediately back to normal latency, proving the duplicates were
+truly free). Raw evidence: `harness_results/run_20260904-021007.jsonl`
+(`scenario_id="idempotency-demo"`, steps 1-7).
+
+**Updated `docs/THREAT_MODEL.md`**: idempotency's live-verification gap
+(named explicitly in the Part 1 entry above) is now closed, with the
+harness scenario as evidence; a new "Known gaps" note explains the
+velocity-burst's inconclusive result honestly rather than omitting it.
+
+**Closed.** Every TrustGuard rule -- kill switch, spend cap/credential
+scope, velocity, daily spend cap, and now idempotency -- is proven live
+against production, via either the Part 1 manual curl sequences or this
+harness. No rule remains with local-only evidence. Day 4 (both parts) is
+complete.
+
 ## 2026-09-04 — Day 4 Part 1: live-verified max_daily_spend_paise on both endpoints (closes the last TrustGuard gap)
 
 **Requested**: the previous entry below wired `max_daily_spend_paise` into

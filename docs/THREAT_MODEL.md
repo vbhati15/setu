@@ -2,10 +2,11 @@
 
 > Status: Day 4. Trust/safety layer (signed identity, policy engine,
 > idempotency, velocity limits, daily spend cap, kill switch,
-> retry-with-backoff) has landed and every rule except idempotency is now
-> live-verified against production on both `GET /products/{id}` and
-> `POST /negotiate` — see "Trust/safety layer (Day 3)" below and the known
-> gaps section for the one remaining live-verification hole.
+> retry-with-backoff) has landed and **every rule is now live-verified**
+> against production on both `GET /products/{id}` and `POST /negotiate` —
+> kill switch, spend cap/credential scope, velocity, daily spend cap
+> (Day 4 Part 1), and idempotency (Day 4 Part 2, closing the last gap via
+> the scenario harness). See "Trust/safety layer (Day 3)" below.
 
 ## Assets
 
@@ -85,6 +86,23 @@ resent later to trigger a second, unauthorized action.
   repeated `idempotency_key` and the purchase pipeline is structured so the
   actual charge (`razorpay_client.create_order`/`pay_order`) is never
   reached on a replay. See `test_genuine_duplicate_purchase_results_in_exactly_one_charge`.
+  **Live-verified against production (2026-09-04)**, via the Day 4 Part 2
+  scenario harness (`backend/app/scripts/scenario_harness.py`,
+  `idempotency-demo` scenario, see `BUILD_LOG.md`): `GET /products/{id}`
+  was called 6 times in a row with an identical fabricated `X-PAYMENT`
+  payload (same `payment_id`, hence the same server-derived
+  `idempotency_key`). All 6 responses were byte-identical; the first took
+  5,350ms (a real Razorpay lookup that failed since the payment_id doesn't
+  exist), the next 5 averaged ~380ms (in-memory cache hits, no repeat
+  Razorpay call). A 7th, control call with a *fresh* fabricated
+  `payment_id` (a genuinely new idempotency key) was **not** blocked by
+  velocity and took a normal ~2,083ms round-trip — proving the 6 identical
+  duplicates cost the caller zero velocity budget between them, only the
+  control's one fresh attempt did. This is the strongest available live
+  proof without a real completed payment: byte-identical cached responses,
+  an order-of-magnitude latency drop on the cache hits, and zero velocity
+  consumption across 6 repeats that would otherwise have exceeded
+  `max_purchases_per_minute` on their own.
 - **Defense — payment amount binding**: `payment.amount` is checked against
   the merchant-computed `expected_price_paise`, not client input, so even a
   successfully-replayed payment record can't be reattached to a
@@ -344,16 +362,21 @@ success/failure. A persistent failure still surfaces as a clear rejection
 - **Admin kill-switch auth is a single shared static key
   (`X-ADMIN-KEY`)** — adequate for a single-operator hackathon deployment,
   not a substitute for per-operator auth/audit logging in a real deployment.
-- **Idempotency has no live-production evidence yet** — every other
-  TrustGuard rule (kill switch, spend cap/credential scope, velocity,
-  daily spend) has been re-verified against the live Render deployment
-  with real request/response transcripts; idempotency dedup
-  (`IdempotencyStore` / a repeated `idempotency_key` short-circuiting to a
-  cached result without a second charge) is currently proven only by local
-  tests (`test_genuine_duplicate_purchase_results_in_exactly_one_charge`
-  and friends). Same code path, same shared `TrustGuard` — no reason to
-  expect it behaves differently live — but it hasn't actually been fired
-  against production the way the others have.
+- ~~Idempotency has no live-production evidence yet~~ **Closed 2026-09-04**
+  — see the "Defense — idempotency keys" live-verification note above.
+- **This run's scenario harness could not independently re-demonstrate
+  `velocity` in isolation** — its dedicated velocity-burst scenario
+  (`backend/app/scripts/scenario_harness.py`) found `daily_spend` had
+  already tripped organically earlier in the same run (real cumulative
+  spend from the comfortable/tight-budget scenarios crossed
+  `max_daily_spend_paise` before the burst started), and a
+  daily-spend-blocked attempt never increments the velocity counter, so
+  the burst's 10 attempts all hit `daily_spend` first rather than ever
+  reaching 5 real successes to trip `velocity`. Not a live-verification
+  gap — `velocity` was already independently proven live against
+  production during Day 4 Part 1 (see `BUILD_LOG.md`, 2026-09-04, the
+  `/negotiate` velocity sequence) — just a note that this specific harness
+  run's ordering didn't get a second, independent confirmation of it.
 
 ## Out of scope for a hackathon demo
 
