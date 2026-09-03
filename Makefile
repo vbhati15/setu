@@ -7,10 +7,10 @@ install:
 	cd frontend && npm install
 
 run:
-	cd backend && uvicorn app.main:app --reload --port 8001
+	uvicorn backend.app.main:app --reload --port 8001
 
 test:
 	pytest backend/tests -v
 
 demo:
-	cd backend && python -m app.scripts.demo_payment
+	python -m backend.app.scripts.demo_payment

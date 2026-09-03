@@ -33,8 +33,8 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from app.config import get_settings
-from app.razorpay_client import RazorpayClient
+from backend.app.config import get_settings
+from backend.app.razorpay_client import RazorpayClient
 
 DEMO_PRODUCT_NAME = "Mechanical Keyboard - Hot-swap, 65%"
 DEMO_AMOUNT_PAISE = 349_900  # INR 3,499.00

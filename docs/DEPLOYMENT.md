@@ -33,24 +33,26 @@ allowed-origins list.
 
 ### Render service configuration (root directory + start command)
 
-Render's root directory for this service is `backend/` — with `app` (not
-`backend.app`) as the top-level Python package from that root. The start
-command must match:
+Confirmed from a live deploy log (2026-09-04): Render's **root directory
+for this service is the repo root**, not `backend/`. The build step runs
+`pip install -r requirements.txt` from the repo root (where
+`requirements.txt` actually lives), and the start command is:
 
 ```
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
+uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
 ```
 
-All internal imports (`backend/app/**`) use `from app.X import Y`, and
-`backend/__init__.py` was deliberately removed so `backend/` is a plain
-path root rather than a package — this is what lets `app` resolve
-consistently whether Render runs uvicorn from inside `backend/` or pytest
-runs from the repo root (pytest's own rootdir-walk stops at `backend/` once
-it has no `__init__.py`, and inserts that directory onto `sys.path`). If
-Render's start command or root directory ever drifts from this, imports
-will fail at boot with `ModuleNotFoundError: No module named 'app'` (or
-`'backend'`, if reverted) — see `backend/app/main.py`'s import block for
-the canonical form every module should follow.
+`backend` is therefore the top-level Python package in this deployment's
+actual run context, matching every internal import in `backend/app/**`
+(`from backend.app.X import Y`) and the committed `backend/__init__.py`.
+**Do not** change these to `app.X`-style imports or remove
+`backend/__init__.py` without also changing Render's start command to
+match (root directory `backend/`, start command `uvicorn app.main:app
+--host 0.0.0.0 --port $PORT`, and `requirements.txt`/`runtime.txt` moved or
+duplicated into `backend/`) — a 2026-09-03 change did exactly that based on
+a mistaken assumption about Render's configuration and took the live
+backend down (`ModuleNotFoundError: No module named 'app'`); see the
+2026-09-04 entry in `BUILD_LOG.md` for the full incident and revert.
 
 ## Local development (today)
 

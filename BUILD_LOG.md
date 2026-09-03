@@ -1,6 +1,63 @@
 # BUILD_LOG.md
 
-## 2026-09-03 — Fix: broken imports under Render's actual run context
+## 2026-09-04 — Incident: the 2026-09-03 import "fix" below was wrong and broke production — reverted
+
+**What happened**: the entry directly below this one ("Fix: broken imports
+under Render's actual run context") was built on an unverified assumption
+about how Render invokes this service. It was never checked against an
+actual Render log before being deployed. It shipped, Render's next deploy
+failed, and the live backend went down.
+
+**Actual Render log** (2026-09-03T18:21-18:22, paraphrased): build succeeds
+(`pip install -r requirements.txt` from the repo root — confirming Render's
+root directory *is* the repo root, not `backend/`), then:
+
+```
+==> Running 'uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT'
+...
+File "/opt/render/project/src/backend/app/main.py", line 10, in <module>
+    from app.catalog import get_catalog
+ModuleNotFoundError: No module named 'app'
+```
+
+So the real configuration was, and still is, the opposite of what the
+2026-09-03 fix assumed: root directory = repo root, start command =
+`uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`. `backend` *is*
+the correct top-level package for this deployment. `backend.app.main`
+itself imported fine (Python treated `backend` as an implicit namespace
+package even without `__init__.py`) — it was `main.py`'s own internal
+`from app.catalog import get_catalog` that failed, because nothing put a
+bare `app` on `sys.path` in that run context.
+
+**Revert**: all 35 files touched by the 2026-09-03 change were reverted —
+`from app.X import Y` back to `from backend.app.X import Y` throughout
+`backend/app/**` and `backend/tests/**`; `backend/__init__.py` restored;
+`Makefile`'s `run`/`demo` targets back to `uvicorn backend.app.main:app
+--reload --port 8001` / `python -m backend.app.scripts.demo_payment` (no
+`cd backend`); the docstring in `negotiation_demo.py` and the
+`docs/TESTING.md` run instructions restored to `python -m
+backend.app.scripts.negotiation_demo`; `docs/DEPLOYMENT.md`'s "Render
+service configuration" section rewritten to state the actual, log-verified
+configuration and to flag this exact mistake for next time.
+
+**Verified before calling this done:**
+
+- `pytest backend/tests -v` (repo root) → 103/103 passing.
+- `uvicorn backend.app.main:app --port 8125`, run from the repo root —
+  i.e. reproducing Render's actual invocation shape, not a guess — boots
+  cleanly; `GET /health` and `GET /catalog` both return `200`.
+
+**Lesson, recorded so it isn't repeated**: a bug report describing "how the
+deployment runs" is a claim, not a verified fact, even when it comes from
+the project owner relaying their own understanding — Render's dashboard
+config can differ from what anyone remembers configuring. The 2026-09-03
+fix should have asked for (or fetched) an actual Render start-command/log
+confirmation before touching import structure repo-wide, especially for a
+change with no local way to fully reproduce the target platform's exact
+process-launch context. Local `uvicorn`/`pytest` runs alone proved the fix
+internally consistent, not that it matched production.
+
+## 2026-09-03 — Fix: broken imports under Render's actual run context (REVERTED — see 2026-09-04 entry above; this was based on a wrong assumption about Render's config)
 
 **Bug**: every module under `backend/app/` imported as `from backend.app.X
 import Y`, which only resolves when the process is started with `backend`

@@ -1,10 +1,10 @@
 import base64
 import json
 
-from app.catalog import get_catalog
-from app.config import get_settings
-from app.llm.base import LLMClient
-from app.merchant_agent import MerchantAgent
+from backend.app.catalog import get_catalog
+from backend.app.config import get_settings
+from backend.app.llm.base import LLMClient
+from backend.app.merchant_agent import MerchantAgent
 
 
 class FakeLLMClient(LLMClient):

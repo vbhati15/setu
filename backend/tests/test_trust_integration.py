@@ -1,12 +1,12 @@
 """Integration tests: the trust layer (signed identity, policy, idempotency,
 velocity, kill switch, retry) wired into the real BuyerAgent/MerchantAgent
 purchase path, not just the isolated trust unit tests."""
-from app.buyer_agent import BuyerAgent
-from app.config import get_settings
-from app.fake_razorpay import FakeRazorpayClient
-from app.llm.base import LLMClient
-from app.merchant_agent import MerchantAgent
-from app.trust.retry import RetryExhausted, retry_with_backoff
+from backend.app.buyer_agent import BuyerAgent
+from backend.app.config import get_settings
+from backend.app.fake_razorpay import FakeRazorpayClient
+from backend.app.llm.base import LLMClient
+from backend.app.merchant_agent import MerchantAgent
+from backend.app.trust.retry import RetryExhausted, retry_with_backoff
 
 
 class FakeLLMClient(LLMClient):

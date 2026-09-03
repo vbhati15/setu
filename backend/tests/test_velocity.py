@@ -1,4 +1,4 @@
-from app.trust.velocity import VelocityLimiter
+from backend.app.trust.velocity import VelocityLimiter
 
 
 def test_under_limit_is_allowed():

@@ -1,5 +1,5 @@
-from app.config import get_settings
-from app.trust.policy import PolicyEngine
+from backend.app.config import get_settings
+from backend.app.trust.policy import PolicyEngine
 
 
 def _engine() -> PolicyEngine:

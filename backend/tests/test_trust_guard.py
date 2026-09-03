@@ -1,6 +1,6 @@
-from app.config import get_settings
-from app.trust.guard import TrustGuard
-from app.trust.identity import AgentIdentity, build_signed_request
+from backend.app.config import get_settings
+from backend.app.trust.guard import TrustGuard
+from backend.app.trust.identity import AgentIdentity, build_signed_request
 
 
 def _guard() -> TrustGuard:
@@ -42,7 +42,7 @@ def test_request_signed_with_wrong_key_is_rejected():
 
 
 def test_credential_from_untrusted_issuer_is_rejected():
-    from app.trust.identity import CredentialIssuer
+    from backend.app.trust.identity import CredentialIssuer
 
     guard = _guard()
     rogue_issuer = CredentialIssuer()

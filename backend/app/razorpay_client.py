@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import razorpay
 
-from app.config import Settings, get_settings
+from backend.app.config import Settings, get_settings
 
 
 class RazorpayClient:

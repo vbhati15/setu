@@ -1,5 +1,5 @@
-from app.bargaining import BuyerParty, MerchantParty, run_zeuthen_negotiation
-from app.bargaining.zeuthen import buyer_utility, merchant_utility, risk
+from backend.app.bargaining import BuyerParty, MerchantParty, run_zeuthen_negotiation
+from backend.app.bargaining.zeuthen import buyer_utility, merchant_utility, risk
 
 
 def test_buyer_utility_bounds():

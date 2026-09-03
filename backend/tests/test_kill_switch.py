@@ -1,4 +1,4 @@
-from app.trust.kill_switch import KillSwitch
+from backend.app.trust.kill_switch import KillSwitch
 
 
 def test_starts_inactive():

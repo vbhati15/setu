@@ -1,4 +1,4 @@
-from app.trust.daily_spend import DailySpendTracker
+from backend.app.trust.daily_spend import DailySpendTracker
 
 
 def test_no_prior_spend_allows_purchase_under_cap():

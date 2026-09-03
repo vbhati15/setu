@@ -17,7 +17,7 @@ import json
 
 from pydantic import ValidationError
 
-from app.x402.schema import (
+from backend.app.x402.schema import (
     PaymentRequirement,
     PaymentRequiredBody,
     UpsellOffer,

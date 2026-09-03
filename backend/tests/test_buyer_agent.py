@@ -1,7 +1,7 @@
-from app.buyer_agent import BuyerAgent
-from app.fake_razorpay import FakeRazorpayClient
-from app.llm.base import LLMClient
-from app.merchant_agent import MerchantAgent
+from backend.app.buyer_agent import BuyerAgent
+from backend.app.fake_razorpay import FakeRazorpayClient
+from backend.app.llm.base import LLMClient
+from backend.app.merchant_agent import MerchantAgent
 
 
 class FakeLLMClient(LLMClient):

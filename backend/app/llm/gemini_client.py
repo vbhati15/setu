@@ -9,8 +9,8 @@ import json
 from google import genai
 from google.genai import types
 
-from app.config import get_settings
-from app.llm.base import LLMClient
+from backend.app.config import get_settings
+from backend.app.llm.base import LLMClient
 
 
 class GeminiClient(LLMClient):

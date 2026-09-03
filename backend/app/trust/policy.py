@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.config import Settings
+from backend.app.config import Settings
 
 
 @dataclass

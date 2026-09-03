@@ -1,4 +1,4 @@
-from app.trust.idempotency import IdempotencyStore
+from backend.app.trust.idempotency import IdempotencyStore
 
 
 def test_unseen_key_returns_none():

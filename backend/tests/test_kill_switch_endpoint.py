@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from app.config import get_settings
-from app.main import app, get_merchant_agent
+from backend.app.config import get_settings
+from backend.app.main import app, get_merchant_agent
 
 client = TestClient(app)
 ADMIN_KEY = get_settings().admin_api_key

@@ -14,7 +14,7 @@ click-through, no mocked LLM, only the payment rail (fake Razorpay) is
 simulated, per the Day-1 decision that automated flows never drive the real
 Checkout widget.
 
-Run with (from the backend/ directory): python -m app.scripts.negotiation_demo
+Run with: python -m backend.app.scripts.negotiation_demo
 """
 from __future__ import annotations
 
@@ -23,11 +23,11 @@ import sys
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-from app.buyer_agent import BuyerAgent, NegotiationOutcome
-from app.fake_razorpay import FakeRazorpayClient
-from app.llm import get_llm_client
-from app.llm.logging_client import LoggingLLMClient
-from app.merchant_agent import MerchantAgent
+from backend.app.buyer_agent import BuyerAgent, NegotiationOutcome
+from backend.app.fake_razorpay import FakeRazorpayClient
+from backend.app.llm import get_llm_client
+from backend.app.llm.logging_client import LoggingLLMClient
+from backend.app.merchant_agent import MerchantAgent
 
 SCENARIOS = [
     (

@@ -7,10 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.catalog import get_catalog
-from app.config import get_settings
-from app.llm import get_llm_client
-from app.merchant_agent import MerchantAgent
+from backend.app.catalog import get_catalog
+from backend.app.config import get_settings
+from backend.app.llm import get_llm_client
+from backend.app.merchant_agent import MerchantAgent
 
 app = FastAPI(title="Setu", description="Agent-to-Agent Commerce Gateway (hackathon project)")
 
