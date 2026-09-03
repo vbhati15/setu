@@ -41,17 +41,46 @@ first and fails gracefully into `NegotiationOutcome(success=False, ...)`.
 FastAPI app via `TestClient`, reproducing the exact sequence run against
 production). 105 tests passing (up from 103).
 
-**Re-verified against live production after the fix** (same six-step
-sequence, real `X-ADMIN-KEY`, actual request/response shown, not summarized):
+**First live attempt (pre-fix, pre-deploy), for the record:**
 1. `GET /admin/kill-switch` → `{"active":false,...}` — 200
-2. `POST .../activate` → `{"active":true,"reason":"Day 3 live verification",...}` — 200
-3. `GET /products/mechanical-keyboard-65` while active → returned the
-   normal `402` — **this was the gap**; fix applied locally and redeployed
-   before re-running.
+2. `POST .../activate` → `{"active":true,"reason":"live re-verification after fix",...}` — 200
+3. `GET /products/mechanical-keyboard-65` while active → still returned the
+   normal `402` — because the fix was only committed locally at that point,
+   not yet pushed/deployed. Confirmed via `git status`/`git log
+   origin/main..HEAD` that the fix hadn't reached Render yet.
 
-*(Local fix verified via `pytest`/`TestClient` above; re-confirming against
-the live Render URL after redeploy is the next step once this is pushed —
-do not mark this closed until that live re-run shows `503` on step 3.)*
+**Committed and pushed** as `cd1bd50 "Wire kill switch into GET
+/products/{id}, the only live transaction endpoint"`.
+
+**Re-verified against live production after Render redeployed** (full
+six-step sequence, real `X-ADMIN-KEY`, actual responses below):
+
+```
+=== activate ===
+{"active":true,"reason":"post-deploy live verification","activated_at":1788463756.7426338}
+HTTP_STATUS=200
+
+=== THE TEST: products endpoint while active ===
+{"error":"kill switch is active (post-deploy live verification); no new transactions are being processed"}
+HTTP_STATUS=503
+
+=== confirm still active ===
+{"active":true,"reason":"post-deploy live verification","activated_at":1788463756.7426338}
+HTTP_STATUS=200
+
+=== deactivate ===
+{"active":false,"reason":null,"activated_at":null}
+HTTP_STATUS=200
+
+=== confirm resumed ===
+{"x402Version":1,"accepts":[{"scheme":"razorpay-inr",...}]}
+HTTP_STATUS=402
+```
+
+**Closed.** The kill switch now genuinely blocks the live `GET
+/products/{id}` endpoint on production (`503`, correct error body citing
+the activation reason) and correctly resumes normal service (`402`) after
+deactivation.
 
 **Lesson recorded**: Day 3's own tests were internally consistent and all
 passed, but every one of them drove the trust layer through
