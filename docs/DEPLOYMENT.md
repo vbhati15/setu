@@ -31,6 +31,27 @@ fetched from it (`GET /health` + `GET /catalog`) — not a static page.
 Redeploy either side after changing catalog data, policy config, or the
 allowed-origins list.
 
+### Render service configuration (root directory + start command)
+
+Render's root directory for this service is `backend/` — with `app` (not
+`backend.app`) as the top-level Python package from that root. The start
+command must match:
+
+```
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+All internal imports (`backend/app/**`) use `from app.X import Y`, and
+`backend/__init__.py` was deliberately removed so `backend/` is a plain
+path root rather than a package — this is what lets `app` resolve
+consistently whether Render runs uvicorn from inside `backend/` or pytest
+runs from the repo root (pytest's own rootdir-walk stops at `backend/` once
+it has no `__init__.py`, and inserts that directory onto `sys.path`). If
+Render's start command or root directory ever drifts from this, imports
+will fail at boot with `ModuleNotFoundError: No module named 'app'` (or
+`'backend'`, if reverted) — see `backend/app/main.py`'s import block for
+the canonical form every module should follow.
+
 ## Local development (today)
 
 ```bash

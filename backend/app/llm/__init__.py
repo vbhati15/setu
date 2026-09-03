@@ -1,5 +1,5 @@
-from backend.app.llm.base import LLMClient
-from backend.app.llm.gemini_client import GeminiClient
+from app.llm.base import LLMClient
+from app.llm.gemini_client import GeminiClient
 
 __all__ = ["LLMClient", "GeminiClient", "get_llm_client"]
 

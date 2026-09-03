@@ -1,5 +1,46 @@
 # BUILD_LOG.md
 
+## 2026-09-03 — Fix: broken imports under Render's actual run context
+
+**Bug**: every module under `backend/app/` imported as `from backend.app.X
+import Y`, which only resolves when the process is started with `backend`
+as a top-level package (i.e. `uvicorn backend.app.main:app` run from the
+repo root). Render's actual service configuration runs uvicorn from inside
+`backend/` as the root directory with `app.main:app` as the target — there,
+`backend` isn't an importable top-level package, so every import in the
+chain fails at boot.
+
+**Fix**:
+
+- Rewrote every `from backend.app.X import Y` / `import backend.app.X` in
+  `backend/app/**` and `backend/tests/**` to `from app.X import Y` /
+  `import app.X` (35 files).
+- Deleted `backend/__init__.py`. This is the load-bearing part of the fix:
+  with it gone, `backend/` is a plain path root instead of a package, so
+  pytest's own rootdir-walk (which requires an unbroken `__init__.py` chain
+  to keep climbing) stops at `backend/` and inserts *that* directory onto
+  `sys.path` — meaning `app` resolves identically whether pytest runs from
+  the repo root (`pytest backend/tests -v`, unchanged in the Makefile/CI)
+  or uvicorn runs from inside `backend/`. Without this, source and test
+  code would have ended up importing the same files under two different
+  module identities (`app.X` vs `backend.app.X`), silently breaking every
+  `lru_cache`-backed singleton (`get_settings()`, `get_catalog()`, etc.).
+- Updated `Makefile`'s `run`/`demo` targets to `cd backend && ...` to match.
+- Fixed docstring run instructions in `negotiation_demo.py` and
+  `docs/TESTING.md` that referenced the old `python -m
+  backend.app.scripts.negotiation_demo` form.
+- Added a "Render service configuration" note to `docs/DEPLOYMENT.md`
+  documenting the required root directory + start command.
+
+**Verified:**
+
+- `pytest backend/tests -v` (from repo root, matching `Makefile`/CI
+  exactly) → 103/103 passing, no regressions.
+- `uvicorn app.main:app --reload --port 8124` started from inside
+  `backend/` (the real Render run context) → boots cleanly, `GET /health`
+  and `GET /catalog` both return `200` with real data. Also verified the
+  non-`--reload` form the same way.
+
 ## 2026-09-03 — Day 3: trust/safety layer (signed identity, policy, idempotency, velocity, kill switch, retry)
 
 **Goal for today**: the trust/safety layer that differentiates Setu from a

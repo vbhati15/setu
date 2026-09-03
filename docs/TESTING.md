@@ -31,8 +31,8 @@
 
 For a real, unattended, non-mocked run against the actual Gemini API (not
 just the fake LLM client used in tests), see
-`backend/app/scripts/negotiation_demo.py` — `python -m
-backend.app.scripts.negotiation_demo`. This prints the full round-by-round
+`backend/app/scripts/negotiation_demo.py` — from the `backend/` directory,
+`python -m app.scripts.negotiation_demo`. This prints the full round-by-round
 trace for all three scenarios plus a per-call LLM log (latency, estimated
 token cost). Payment still goes through `FakeRazorpayClient`, not the real
 Checkout widget — see `docs/DECISIONS.md`, 2026-09-02, for why automated

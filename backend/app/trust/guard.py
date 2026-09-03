@@ -29,13 +29,13 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from backend.app.config import Settings
-from backend.app.trust.identity import CredentialIssuer, SignedRequest, verify_signature
-from backend.app.trust.daily_spend import DailySpendTracker
-from backend.app.trust.idempotency import IdempotencyStore
-from backend.app.trust.kill_switch import KillSwitch
-from backend.app.trust.policy import PolicyDecision, PolicyEngine
-from backend.app.trust.velocity import VelocityLimiter
+from app.config import Settings
+from app.trust.identity import CredentialIssuer, SignedRequest, verify_signature
+from app.trust.daily_spend import DailySpendTracker
+from app.trust.idempotency import IdempotencyStore
+from app.trust.kill_switch import KillSwitch
+from app.trust.policy import PolicyDecision, PolicyEngine
+from app.trust.velocity import VelocityLimiter
 
 logger = logging.getLogger("setu.trust")
 

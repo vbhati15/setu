@@ -13,7 +13,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
-from backend.app.config import get_settings
+from app.config import get_settings
 
 CATALOG_PATH = Path(__file__).parent / "products.json"
 

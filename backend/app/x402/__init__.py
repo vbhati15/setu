@@ -1,9 +1,9 @@
-from backend.app.x402.protocol import (
+from app.x402.protocol import (
     build_payment_required_body,
     decode_x_payment_header,
     encode_x_payment_response,
 )
-from backend.app.x402.schema import (
+from app.x402.schema import (
     PaymentRequirement,
     RazorpayPaymentPayload,
     UpsellOffer,

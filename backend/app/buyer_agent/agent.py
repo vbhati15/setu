@@ -24,13 +24,13 @@ import re
 import uuid
 from dataclasses import dataclass, field
 
-from backend.app.bargaining import BuyerParty, RoundResult, run_zeuthen_negotiation
-from backend.app.catalog import Catalog, Product, get_catalog
-from backend.app.config import Settings, get_settings
-from backend.app.fake_razorpay import FakeRazorpayClient
-from backend.app.llm.base import LLMClient
-from backend.app.merchant_agent import MerchantAgent
-from backend.app.trust.identity import AgentIdentity, build_signed_request
+from app.bargaining import BuyerParty, RoundResult, run_zeuthen_negotiation
+from app.catalog import Catalog, Product, get_catalog
+from app.config import Settings, get_settings
+from app.fake_razorpay import FakeRazorpayClient
+from app.llm.base import LLMClient
+from app.merchant_agent import MerchantAgent
+from app.trust.identity import AgentIdentity, build_signed_request
 
 _STOPWORDS = {
     "a", "an", "the", "get", "buy", "for", "and", "of", "to", "in", "with",

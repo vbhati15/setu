@@ -14,7 +14,7 @@ import json
 import time
 from dataclasses import dataclass, field
 
-from backend.app.llm.base import LLMClient
+from app.llm.base import LLMClient
 
 # Gemini 2.0 Flash paid-tier rates, USD per 1K tokens (illustrative only).
 _INPUT_RATE_PER_1K = 0.0001

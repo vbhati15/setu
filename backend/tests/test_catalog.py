@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from backend.app.catalog.catalog import Product, get_catalog
+from app.catalog.catalog import Product, get_catalog
 
 
 def test_catalog_loads_and_validates():

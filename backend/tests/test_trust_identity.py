@@ -1,6 +1,6 @@
 import time
 
-from backend.app.trust.identity import (
+from app.trust.identity import (
     AgentIdentity,
     CredentialIssuer,
     build_signed_request,

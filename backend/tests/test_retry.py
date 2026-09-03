@@ -1,6 +1,6 @@
 import pytest
 
-from backend.app.trust.retry import RetryExhausted, retry_with_backoff
+from app.trust.retry import RetryExhausted, retry_with_backoff
 
 
 def test_succeeds_first_try_no_retry_needed():

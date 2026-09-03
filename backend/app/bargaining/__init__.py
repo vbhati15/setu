@@ -1,4 +1,4 @@
-from backend.app.bargaining.zeuthen import (
+from app.bargaining.zeuthen import (
     BuyerParty,
     MerchantParty,
     RoundResult,

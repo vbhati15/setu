@@ -17,20 +17,20 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from backend.app.bargaining import MerchantParty
-from backend.app.catalog import Catalog, Product, get_catalog
-from backend.app.config import Settings, get_settings
-from backend.app.llm.base import LLMClient
-from backend.app.razorpay_client import RazorpayClient
-from backend.app.trust.guard import AuthorizationResult, TrustGuard
-from backend.app.trust.identity import AgentCredential, SignedRequest
-from backend.app.trust.retry import RetryExhausted, retry_with_backoff
-from backend.app.x402.protocol import (
+from app.bargaining import MerchantParty
+from app.catalog import Catalog, Product, get_catalog
+from app.config import Settings, get_settings
+from app.llm.base import LLMClient
+from app.razorpay_client import RazorpayClient
+from app.trust.guard import AuthorizationResult, TrustGuard
+from app.trust.identity import AgentCredential, SignedRequest
+from app.trust.retry import RetryExhausted, retry_with_backoff
+from app.x402.protocol import (
     build_payment_required_body,
     decode_x_payment_header,
     encode_x_payment_response,
 )
-from backend.app.x402.schema import UpsellOffer
+from app.x402.schema import UpsellOffer
 
 logger = logging.getLogger("setu.merchant_agent")
 
