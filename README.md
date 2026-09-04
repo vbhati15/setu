@@ -2,9 +2,9 @@
 
 # Setu
 
-**Two AI agents that negotiate a real price and pay for it — with a trust layer that can prove, cryptographically, that it did the right thing.**
+**Two AI agents negotiate a real price and pay for it — and can prove, cryptographically, that they played fair.**
 
-*A hackathon project, built in a few days. Not affiliated with any existing company or product also named "Setu."*
+*A buildathon project, not affiliated with any existing company or product also named "Setu."*
 
 [![Live dashboard](https://img.shields.io/badge/dashboard-live-e6b95a?style=flat-square)](https://setu-alpha-beige.vercel.app)
 [![Backend API](https://img.shields.io/badge/API-live-e6b95a?style=flat-square)](https://setu-59l6.onrender.com/health)
@@ -13,56 +13,66 @@
 
 [Live demo](https://setu-alpha-beige.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Threat model](docs/THREAT_MODEL.md) · [Bargaining strategy](docs/BARGAINING.md)
 
-</div>
+<br>
 
-![Setu dashboard — hero and live negotiation feed](docs/screenshots/setu.gif)
+<img src="docs/screenshots/setu.gif" alt="Setu dashboard — hero and live negotiation feed" width="880">
+
+</div>
 
 ---
 
 ## What this is
 
-Most "AI agent commerce" demos either fake the negotiation (an LLM freestyles a number) or fake the trust ("trust us, it's safe"). Setu does neither:
+Most "AI negotiates for you" demos are smoke and mirrors: an LLM freestyles a number, or you're just asked to trust that it's safe. Setu tries to actually earn that trust instead.
 
-- A **Buyer Agent** and a **Merchant Agent** actually negotiate price using **Zeuthen's monotonic concession protocol** — deterministic game-theory math, not an LLM guessing a plausible number. The LLM only turns each round's already-decided numbers into a natural-language sentence for the chat log; it can never move the price. See [`docs/BARGAINING.md`](docs/BARGAINING.md).
-- Every purchase — automated or human-triggered — passes through **`TrustGuard`**, a single choke point running 8 independent, ordered safety checks (kill switch, signature/replay defense, credential scope, idempotency, velocity limits, daily spend cap, per-transaction cap, category policy) before a single paisa moves. Every rule is **live-verified against production**, not just unit-tested — see [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`BUILD_LOG.md`](BUILD_LOG.md) for real request/response transcripts.
-- Payments are **real Razorpay test-mode transactions** (Orders + Payments API) — not a mock.
-- A completed purchase can produce a **signed, standalone-verifiable transaction certificate** — a receipt you can check without ever trusting our server. See [Verification certificates](#verification-certificates) below.
+- **The price is math, not a guess.** A Buyer Agent and a Merchant Agent negotiate using Zeuthen's concession protocol — real game theory, fully deterministic. The LLM only turns each round's already-decided offer into a sentence for the chat log. It never touches the price. → [`docs/BARGAINING.md`](docs/BARGAINING.md)
+- **Every purchase passes through 8 safety checks** before any money moves — kill switch, signature/replay defense, credential scope, idempotency, velocity limits, daily spend cap, per-transaction cap, category policy. All 8 have been fired against the *live production deployment*, not just tested locally. → [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
+- **The payments are real.** Razorpay test-mode transactions, not a mock.
+- **You get a receipt you don't have to trust us on.** A completed purchase can produce a signed certificate you verify yourself, offline. → [Verification certificates](#verification-certificates)
 
 ## Why it's different
 
-| | Typical "AI negotiates" demo | Setu |
+| | The usual "AI negotiates" demo | Setu |
 |---|---|---|
-| Who sets the price | The LLM, freestyling | A deterministic Zeuthen bargaining engine ([`docs/BARGAINING.md`](docs/BARGAINING.md)) — reproducible, explainable, never hallucinated |
-| What the LLM is trusted with | Everything, including the number | Only phrasing an already-decided offer as a sentence — a broken LLM call degrades the chat log, never the price |
-| How "safe" is proven | A README claim | 8 independent trust checks, live-fired against the production deployment with real request/response evidence ([`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)) |
-| How a completed deal is proven | A database row you have to trust us about | A downloadable, Ed25519-signed certificate anyone can verify **offline**, with **no** call back to our server ([`verify_certificate.py`](verify_certificate.py)) |
+| Who sets the price | The LLM, freestyling | A deterministic bargaining engine — reproducible, never hallucinated |
+| What the LLM is trusted with | Everything, including the number | One sentence of flavor text. A broken LLM call degrades the chat log, never the price |
+| How "safe" is proven | Take our word for it | 8 trust checks, fired live against production, with the request/response evidence to show for it |
+| How a completed deal is proven | A database row you have to trust us about | A signed certificate you can verify **offline**, with no call back to our server |
 
 ## See it live
 
-![Try it yourself — pick a product and budget, watch the risk-of-conflict chart converge](docs/screenshots/negotiation.png)
+<p align="center">
+  <img src="docs/screenshots/negotiation.png" alt="Try it yourself — pick a product and budget, watch the risk-of-conflict chart converge" width="820">
+</p>
 
-**[setu-alpha-beige.vercel.app](https://setu-alpha-beige.vercel.app)** — pick a product and a budget (or hit "Surprise me"), and watch your own Buyer Agent negotiate against Setu's Merchant Agent in real time: a real two-party chat paced by each message's actual LLM latency, a live Zeuthen risk-of-conflict chart, and — once a deal closes — a real Razorpay test-mode Checkout you can complete yourself.
+**[setu-alpha-beige.vercel.app](https://setu-alpha-beige.vercel.app)** — pick a product and a budget, or just hit "Surprise me." Your own Buyer Agent negotiates against Setu's Merchant Agent in real time: a two-party chat paced by real LLM latency, a live risk-of-conflict chart, and — once a deal closes — a real Razorpay Checkout you complete yourself.
 
-![The negotiation replayed as a two-party chat, ending in a closed deal](docs/screenshots/negotiation-1.png)
+<p align="center">
+  <img src="docs/screenshots/negotiation-1.png" alt="The negotiation replayed as a two-party chat, ending in a closed deal" width="820">
+</p>
 
-The dashboard also has three other tabs, all built from real data, nothing illustrative:
+Three more tabs, all built from real data — nothing illustrative:
 
-![Test results tab — real numbers from the scenario harness, run against the live production API](docs/screenshots/results.png)
+<p align="center">
+  <img src="docs/screenshots/results.png" alt="Test results tab — real numbers from the scenario harness, run against the live production API" width="820">
+</p>
 
-- **Decision trace** — the exact 8-step TrustGuard checklist for a given outcome, reconstructed from the backend's own response, never fabricated.
-- **Test results** — real numbers from a 22-scenario, 37-call test harness run against the live production API (`backend/app/scripts/scenario_harness.py`), including deliberate rule-breach attempts.
-- **Audit log** — every one of those 37 real HTTP calls, with real order numbers, timestamps, and durations.
-- **Kill switch** — an actual admin-gated emergency stop wired into the live deployment, not a demo toggle.
+- **Decision trace** — the exact 8-step checklist behind one outcome, pulled straight from the backend's own response.
+- **Test results** — a 22-scenario, 37-call test harness, run against the live API, deliberate rule-breaks included.
+- **Audit log** — every one of those 37 calls, with real order numbers, timestamps, durations.
+- **Kill switch** — an actual admin-gated emergency stop, wired into the live deployment. Not a demo toggle.
 
 ## Verification certificates
 
-![Download verification certificate button on the result card, after a real completed payment](docs/screenshots/certificate.png)
+<p align="center">
+  <img src="docs/screenshots/certificate.png" alt="Download verification certificate button on the result card, after a real completed payment" width="700">
+</p>
 
-When a negotiated purchase actually completes, the result card offers **"Download verification certificate"** — a small JSON file containing the product, agreed price, transaction id, timestamp, and exactly which trust checks that specific transaction passed, signed with the same Ed25519 key the backend already uses to sign agent credentials (see [`docs/DECISIONS.md`](docs/DECISIONS.md), 2026-09-05).
+When a negotiated purchase completes, you get a **"Download verification certificate"** button. It saves a small signed JSON file: product, price, transaction id, timestamp, and exactly which trust checks that transaction passed — signed with the same Ed25519 key the backend already uses for agent credentials.
 
-The point: **you never have to trust our server to check it.** [`verify_certificate.py`](verify_certificate.py) (repo root) verifies the signature completely offline — no network call, no dependency on this backend being up or honest — using only the certificate's own embedded public key.
+The point is simple: **you don't have to trust our server to check it.** [`verify_certificate.py`](verify_certificate.py) verifies the signature completely offline — no network call, nothing that depends on us being honest or even online.
 
-Real output, from an actual completed purchase — a live human click-through of a real Razorpay test-mode Checkout, not a synthetic example:
+Here's real output, from an actual completed purchase, a real human clicking through a real Razorpay Checkout — not a staged example:
 
 ```bash
 python verify_certificate.py path/to/certificate.json
@@ -78,7 +88,7 @@ Issued at:       2026-09-04T20:53:59.900620+00:00
 ✓ Valid — this certificate has not been altered
 ```
 
-Change one character in that same downloaded file and re-run it:
+Change one character in that same file and run it again:
 
 ```
 ✗ Invalid — signature does not match
@@ -102,9 +112,9 @@ flowchart TD
     Cert -.->|"verified offline by,<br/>no server needed"| You
 ```
 
-Read it as one sentence: **you** pick a product and budget, your **Buyer Agent** negotiates against the **Merchant Agent** using deterministic math (the LLM only phrases the sentence, never sets the price), and once a deal clears **TrustGuard**'s checks, a real **Razorpay** payment happens and you get back a **signed certificate** you can verify yourself, offline, without trusting this backend at all.
+In one sentence: you pick a product and budget, your Buyer Agent negotiates with the Merchant Agent using deterministic math (the LLM just phrases it — never sets the price), TrustGuard checks the deal, a real Razorpay payment goes through, and you get back a certificate you can verify yourself without trusting us at all.
 
-Deeper diagrams (component call sequence, raw data flow, deployment topology): [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Want the deeper diagrams — component call sequence, raw data flow, deployment topology? → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ## Tech stack
 
@@ -188,22 +198,22 @@ flowchart TD
     J -- yes --> K[Approved — payment proceeds]
 ```
 
-Every one of these is checked in this exact order, short-circuiting at the first failure — no partial approvals. Every rule has been fired **against the live production deployment**, with the real request/response transcripts recorded in [`BUILD_LOG.md`](BUILD_LOG.md) and summarized in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+Checked in exactly this order, every time — the first failure stops everything, no partial approvals. All of it has been fired against the live production deployment, with the real request/response transcripts in [`BUILD_LOG.md`](BUILD_LOG.md) and summarized in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
 ## Testing & live verification
 
 - `pytest backend/tests -v` → **140/140 passing** locally.
-- A black-box scenario harness (`backend/app/scripts/scenario_harness.py`) ran 22 named scenarios (37 real HTTP calls) against the **live production API** — comfortable-budget purchases, tight-budget multi-round negotiations, no-match graceful failures, and deliberate rule-breach attempts (credential scope, velocity, daily spend, duplicate idempotency keys). Results are checked into `backend/app/scripts/harness_results/*.jsonl` and surfaced live in the dashboard's Test Results/Audit Log tabs.
-- Every `TrustGuard` rule — kill switch, signature/replay, credential scope, idempotency, velocity, daily spend cap, spend cap, category — has been independently fired against production with real request/response evidence, not just asserted in a unit test. Full transcripts in [`BUILD_LOG.md`](BUILD_LOG.md); see [`docs/TESTING.md`](docs/TESTING.md) for how to reproduce.
+- A black-box scenario harness (`backend/app/scripts/scenario_harness.py`) ran 22 named scenarios, 37 real HTTP calls, against the **live production API** — comfortable-budget purchases, tight-budget negotiations, graceful no-match failures, and deliberate rule-breaks (credential scope, velocity, daily spend, duplicate idempotency keys). Results live in `backend/app/scripts/harness_results/*.jsonl` and show up in the dashboard's Test Results/Audit Log tabs.
+- Every trust rule has been independently fired against production with real evidence, not just asserted in a unit test. Full transcripts in [`BUILD_LOG.md`](BUILD_LOG.md); how to reproduce in [`docs/TESTING.md`](docs/TESTING.md).
 
 ## Known limitations
 
-Being upfront about this, since it's a compressed hackathon build:
+Being upfront, since this was built fast:
 
-- Single-process, single-instance deployment — trust-layer state (idempotency store, velocity counters, nonce cache) is in-memory, not yet backed by a shared store like Redis/Postgres.
-- The negotiation engine holds both parties' reservation prices in one process rather than each agent inferring the other's from observed offers alone — see "What this does not model" in [`docs/BARGAINING.md`](docs/BARGAINING.md).
-- Admin kill-switch auth is a single shared static key, adequate for a single-operator demo, not per-operator auth in a real deployment.
-- Test-mode payments only — live-mode is structurally supported but intentionally blocked in code today (`config.py`).
+- Single instance, in-memory trust-layer state — no shared store like Redis/Postgres yet, so it wouldn't survive scaling past one process today.
+- The negotiation engine sees both parties' reservation prices in one process, rather than each agent inferring the other's from observed offers alone. See "What this does not model" in [`docs/BARGAINING.md`](docs/BARGAINING.md).
+- The admin kill switch uses one shared static key — fine for a single-operator demo, not for a real deployment with multiple operators.
+- Test-mode payments only. Live-mode is structurally supported but intentionally blocked in code (`config.py`).
 
 Full, continuously-updated list: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) → "Known gaps."
 
