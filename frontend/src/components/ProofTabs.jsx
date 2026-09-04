@@ -52,11 +52,11 @@ export default function ProofTabs({ decisionExamples, summary, records }) {
   return (
     <section
       id="proof"
-      className="snap-panel relative overflow-hidden flex flex-col justify-center py-20 border-t border-ink-700 w-full"
+      className="snap-panel relative overflow-hidden flex flex-col justify-center py-10 border-t border-ink-700 w-full"
     >
       <SectionBackdrop />
       <SectionReveal className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
-        <div className="flex flex-wrap gap-2 mb-10">
+        <div className="flex flex-wrap gap-2 mb-6">
           {available.map((t) => {
             const Icon = t.icon;
             const isActive = active === t.key;
@@ -64,7 +64,7 @@ export default function ProofTabs({ decisionExamples, summary, records }) {
               <button
                 key={t.key}
                 onClick={() => setActive(t.key)}
-                className={`inline-flex items-center gap-2 rounded-md border px-4 py-2.5 text-sm font-medium transition-colors ${
+                className={`inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium transition-colors ${
                   isActive
                     ? "border-gold-500/60 bg-gold-500/10 text-gold-300"
                     : "border-ink-700 text-parchment-500 hover:border-ink-600 hover:text-parchment-300"

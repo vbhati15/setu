@@ -37,8 +37,8 @@ export default function OutcomeDonut({ outcomes }) {
   });
 
   return (
-    <div className="flex items-center gap-8 flex-wrap sm:flex-nowrap">
-      <svg viewBox="0 0 140 140" className="w-48 h-48 shrink-0 -rotate-90">
+    <div className="flex items-center gap-6 flex-wrap sm:flex-nowrap">
+      <svg viewBox="0 0 140 140" className="w-36 h-36 shrink-0 -rotate-90">
         <circle cx={CX} cy={CY} r={R} fill="none" stroke="#1d1916" strokeWidth={STROKE} />
         {segments.map((s, i) => (
           <motion.circle
@@ -58,9 +58,9 @@ export default function OutcomeDonut({ outcomes }) {
           />
         ))}
       </svg>
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         {segments.map((s) => (
-          <div key={s.key} className="flex items-center gap-3 text-base font-mono">
+          <div key={s.key} className="flex items-center gap-3 text-sm font-mono">
             <span className="w-3 h-3 rounded-full inline-block" style={{ background: COLORS[s.key] }} />
             <span className="text-parchment-300">{LABELS[s.key] || s.key}</span>
             <span className="text-parchment-500">

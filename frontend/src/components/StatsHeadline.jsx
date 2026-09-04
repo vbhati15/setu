@@ -28,27 +28,27 @@ export default function StatsHeadline({ summary }) {
 
   return (
     <div ref={ref} className="relative w-full">
-      <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3 mb-4">
-        <ShieldCheck size={30} className="text-gold-400" />
+      <h2 className="text-2xl sm:text-3xl font-semibold text-parchment-100 flex items-center gap-3 mb-2">
+        <ShieldCheck size={24} className="text-gold-400" />
         Scenario harness results
       </h2>
-      <p className="text-base text-parchment-400 leading-relaxed mb-10 max-w-3xl">
+      <p className="text-sm text-parchment-400 leading-relaxed mb-5 max-w-3xl">
         A real black-box HTTP test run against the live deployment at{" "}
         <span className="font-mono text-parchment-300">{base_url}</span> — {total_named_scenarios} named
         scenarios, {total_http_calls} total calls, logged in full.
       </p>
 
-      <div className="grid lg:grid-cols-[1.1fr_1fr] gap-12 items-center mb-12">
-        <div className="flex items-baseline gap-6">
+      <div className="grid lg:grid-cols-[1.1fr_1fr] gap-8 items-center mb-6">
+        <div className="flex items-baseline gap-5">
           <BigStat value={compliant} inView={inView} />
-          <div className="text-parchment-400 text-base leading-tight max-w-[14rem]">
+          <div className="text-parchment-400 text-sm leading-tight max-w-[14rem]">
             transactions completed clean, of {total_http_calls} total calls this run
           </div>
         </div>
         <OutcomeDonut outcomes={outcomes} />
       </div>
 
-      <div className="grid sm:grid-cols-4 gap-5 mb-10">
+      <div className="grid sm:grid-cols-4 gap-4 mb-6">
         <Stat label="escalated" value={outcomes.escalated || 0} inView={inView} delay={0.1} />
         <Stat label="rejected" value={outcomes.rejected || 0} inView={inView} delay={0.2} />
         <Stat label="graceful no-match" value={outcomes.graceful_no_match || 0} inView={inView} delay={0.3} />
@@ -59,15 +59,15 @@ export default function StatsHeadline({ summary }) {
         initial={{ opacity: 0, y: 10 }}
         animate={inView ? { opacity: 1, y: 0 } : {}}
         transition={{ delay: 0.5, duration: 0.5 }}
-        className="rounded-lg border border-ink-700 bg-ink-900/50 p-6"
+        className="rounded-lg border border-ink-700 bg-ink-900/50 p-4"
       >
-        <div className="text-xs font-mono uppercase tracking-wide text-parchment-500 mb-4">
+        <div className="text-xs font-mono uppercase tracking-wide text-parchment-500 mb-3">
           Blocked, by rule (real breaches this run deliberately triggered)
         </div>
         {blocked.length === 0 ? (
           <div className="text-sm text-parchment-500">no rules fired in this run</div>
         ) : (
-          <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-2">
+          <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-1.5">
             {blocked.map(([rule, count]) => (
               <li key={rule} className="flex items-center justify-between text-sm font-mono">
                 <span className="text-parchment-300">{RULE_LABELS[rule] || rule}</span>
@@ -85,8 +85,8 @@ function BigStat({ value, inView }) {
   const n = useCountUp(value, { start: inView, duration: 1100 });
   return (
     <div
-      className="text-8xl sm:text-9xl font-semibold font-mono text-gold-400 leading-none"
-      style={{ textShadow: "4px 6px 0px rgba(0,0,0,0.55)" }}
+      className="text-6xl sm:text-7xl font-semibold font-mono text-gold-400 leading-none"
+      style={{ textShadow: "3px 4px 0px rgba(0,0,0,0.55)" }}
     >
       {n}
     </div>
@@ -101,10 +101,10 @@ function Stat({ label, value, inView, delay = 0 }) {
       animate={inView ? { opacity: 1, y: 0 } : {}}
       transition={{ delay, duration: 0.5 }}
       whileHover={{ y: -3, borderColor: "rgba(230,185,90,0.4)" }}
-      className="rounded-lg border border-ink-700 bg-ink-900/50 p-6 transition-colors"
+      className="rounded-lg border border-ink-700 bg-ink-900/50 p-4 transition-colors"
     >
-      <div className="text-4xl font-semibold font-mono text-parchment-100">{n}</div>
-      <div className="text-sm text-parchment-500 mt-2">{label}</div>
+      <div className="text-3xl font-semibold font-mono text-parchment-100">{n}</div>
+      <div className="text-sm text-parchment-500 mt-1">{label}</div>
     </motion.div>
   );
 }
