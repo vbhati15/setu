@@ -47,6 +47,26 @@ On top of the above, uncommitted at end of this session:
   described in `BUILD_LOG.md` (Day 4 Part 4). No new dependencies beyond
   the ones already listed above.
 
+### Also pending (Day 4 Part 5, later the same day) — not committed
+
+On top of the above, uncommitted at end of this session:
+
+- **`backend/app/main.py` / `backend/app/buyer_agent/agent.py`**: `/negotiate`
+  now accepts an optional `product_id` field that pins negotiation to an
+  exact catalog product, bypassing keyword matching — fixes the
+  product-mismatch bug described in `docs/DECISIONS.md` (2026-09-04, "Product-mismatch
+  bug: routed around via `product_id`, not fixed at the root"). Without
+  this deployed, the dashboard's "try it yourself" picker can still
+  silently substitute a different product than the one selected when the
+  budget is below the picked product's list price.
+- **`frontend/`**: full visual redesign — new `ProofTabs.jsx`,
+  `AgentConnectionBackdrop.jsx`, `NegotiationTicker.jsx`, `ShutterIntro.jsx`,
+  `lib/proofNav.js`; the gold/parchment/ink theme replaced with a
+  black/crimson theme (`tailwind.config.js`); `LiveFeed.jsx` no longer
+  auto-shows a fallback negotiation on load and sends `product_id` from the
+  product picker; `Header.jsx` currently has no content (iterated through
+  several ideas this session, emptied on request). No new npm dependencies.
+
 ### Environment variables set on the hosts (not committed)
 
 - **Render (backend)**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`,

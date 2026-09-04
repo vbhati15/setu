@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Zap, Scale, ShieldCheck } from "lucide-react";
 import SectionBackdrop from "./SectionBackdrop";
 import SectionReveal from "./SectionReveal";
+import NegotiationTicker from "./NegotiationTicker";
 
 const STEPS = [
   {
@@ -29,11 +30,13 @@ export default function HowItWorks() {
     >
       <SectionBackdrop />
       <SectionReveal className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
-        <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 mb-4">How it works</h2>
-        <p className="text-base text-parchment-400 leading-relaxed mb-10 max-w-2xl">
-          Two AI agents — yours and Setu's — negotiate and complete a real payment, live. Every step below is
-          watchable, not just claimed.
-        </p>
+        <div className="mb-10">
+          <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 mb-4">How it works</h2>
+          <p className="text-base text-parchment-400 leading-relaxed max-w-2xl">
+            Two AI agents — yours and Setu's — negotiate and complete a real payment, live. Every step below is
+            watchable, not just claimed.
+          </p>
+        </div>
         <div className="grid sm:grid-cols-3 gap-6">
           {STEPS.map(({ icon: Icon, title, body }, i) => (
             <motion.div
@@ -52,6 +55,12 @@ export default function HowItWorks() {
               <p className="text-sm text-parchment-400 leading-relaxed">{body}</p>
             </motion.div>
           ))}
+        </div>
+        <div className="flex flex-col items-center text-center gap-4 mt-10">
+          <NegotiationTicker size="lg" full />
+          <p className="text-sm leading-snug text-parchment-400">
+            Every deal your agent makes <span className="text-gold-400">ticks live</span>.
+          </p>
         </div>
       </SectionReveal>
     </section>

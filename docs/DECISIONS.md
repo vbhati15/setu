@@ -2,7 +2,43 @@
 
 Running log of non-obvious decisions and why they were made. Newest first.
 
-## 2026-09-04 — Per-message negotiation-replay latency is measured in `_phrase()` itself, not via `LoggingLLMClient`
+## 2026-09-04 — Product-mismatch bug: routed around via `product_id`, not fixed at the root
+
+The entry directly below this one ("USB-C Hub → Cable Organizer Kit
+mismatch") root-caused but deliberately left unfixed a bug where the "try
+it yourself" picker's exact product selection could silently get swapped
+for a different, cheaper one. Rather than fixing
+`BuyerAgent._find_candidate_product`'s keyword-matching heuristic itself
+(the short-token/substring-containment issue described below, which is
+inherent to *free-text* product discovery), added an optional `product_id`
+to `NegotiateRequest`/`negotiate_and_purchase` (`backend/app/main.py`,
+`backend/app/buyer_agent/agent.py`) that, when present, looks the product
+up directly via `catalog.get()` and skips keyword matching entirely.
+
+This was the better fix specifically *because* the picker case doesn't need
+matching at all — the frontend already knows the exact catalog id the
+visitor selected (`selectedProduct.id` from `GET /catalog`), so keyword
+scoring was never the right tool for that call site; it exists to serve the
+"Surprise me" scenario button, which only ever has free text
+(`SCENARIOS[i].goal_text`) and no id to pin to. Fixing the scoring
+heuristic instead would have been the *more correct* general fix (it would
+also help "Surprise me"), but was a larger, riskier change to a shared
+matching function with no test coverage for the specific short-token
+failure mode — deferred, not ruled out.
+
+**The `_find_candidate_product` bug described below is still live** for
+any caller that doesn't pass `product_id` — currently only the "Surprise
+me" path, whose five hardcoded `SCENARIOS` are chosen not to trigger it,
+so it doesn't currently manifest in the shipped UI, but a new freeform-text
+entry point would hit it again.
+
+Verified live (local backend, two real multi-round Zeuthen negotiations):
+pinning `product_id="wireless-mouse-ergo"` at a too-low budget now
+correctly stalemates on the wireless mouse instead of silently substituting
+`mouse-pad-xl`; the same id at a workable budget closes a real deal on the
+wireless mouse. See `BUILD_LOG.md`, 2026-09-04 Day 4 Part 5.
+
+## 2026-09-04 — USB-C Hub → Cable Organizer Kit mismatch: root-caused, deliberately not fixed yet
 
 A `backend/app/llm/logging_client.py::LoggingLLMClient` wrapper already
 existed that records latency + estimated cost per LLM call — but it was

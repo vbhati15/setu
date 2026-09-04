@@ -3,8 +3,6 @@ import { motion, useInView } from "framer-motion";
 import { ShieldCheck } from "lucide-react";
 import { useCountUp } from "../lib/useCountUp";
 import OutcomeDonut from "./charts/OutcomeDonut";
-import SectionBackdrop from "./SectionBackdrop";
-import SectionReveal from "./SectionReveal";
 
 const RULE_LABELS = {
   daily_spend: "daily spend cap breach",
@@ -23,19 +21,13 @@ export default function StatsHeadline({ summary }) {
   // never satisfies "in view" at all -- so the count-up would never fire.
   const inView = useInView(ref, { once: true, margin: "0px 0px -10% 0px" });
 
-  if (!summary) return <section id="stats" ref={ref} className="snap-panel" />;
+  if (!summary) return <div ref={ref} />;
   const { outcomes, rules_fired, total_named_scenarios, total_http_calls, base_url } = summary;
   const compliant = outcomes.compliant || 0;
   const blocked = Object.entries(rules_fired || {});
 
   return (
-    <section
-      id="stats"
-      ref={ref}
-      className="snap-panel relative overflow-hidden flex flex-col justify-center py-20 border-t border-ink-700 w-full"
-    >
-      <SectionBackdrop />
-      <SectionReveal className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
+    <div ref={ref} className="relative w-full">
       <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3 mb-4">
         <ShieldCheck size={30} className="text-gold-400" />
         Scenario harness results
@@ -85,8 +77,7 @@ export default function StatsHeadline({ summary }) {
           </ul>
         )}
       </motion.div>
-      </SectionReveal>
-    </section>
+    </div>
   );
 }
 
@@ -95,7 +86,7 @@ function BigStat({ value, inView }) {
   return (
     <div
       className="text-8xl sm:text-9xl font-semibold font-mono text-gold-400 leading-none"
-      style={{ textShadow: "0 0 50px rgba(230,185,90,0.4)" }}
+      style={{ textShadow: "4px 6px 0px rgba(0,0,0,0.55)" }}
     >
       {n}
     </div>

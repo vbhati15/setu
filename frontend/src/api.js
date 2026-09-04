@@ -18,11 +18,11 @@ export function getCatalog() {
   return getJSON("/catalog");
 }
 
-export async function postNegotiate(goalText, budgetPaise) {
+export async function postNegotiate(goalText, budgetPaise, productId) {
   const res = await fetch(`${API_BASE_URL}/negotiate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ goal_text: goalText, budget_paise: budgetPaise }),
+    body: JSON.stringify({ goal_text: goalText, budget_paise: budgetPaise, product_id: productId || null }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {

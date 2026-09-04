@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Power, AlertTriangle, Loader2 } from "lucide-react";
 import { getKillSwitchStatus, activateKillSwitch, deactivateKillSwitch } from "../api";
-import SectionBackdrop from "./SectionBackdrop";
-import SectionReveal from "./SectionReveal";
 
 export default function KillSwitch() {
   const [status, setStatus] = useState(null);
@@ -59,11 +57,7 @@ export default function KillSwitch() {
   const active = status?.active;
 
   return (
-    <section
-      id="kill-switch"
-      className="snap-panel relative flex flex-col justify-center py-20 border-t border-ink-700 w-full overflow-hidden"
-    >
-      <SectionBackdrop />
+    <div className="relative w-full overflow-hidden">
       {active && (
         <motion.div
           className="pointer-events-none absolute inset-0"
@@ -79,7 +73,7 @@ export default function KillSwitch() {
         />
       )}
 
-      <SectionReveal className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full grid lg:grid-cols-[1.1fr_1fr] gap-12 items-center">
+      <div className="relative grid lg:grid-cols-[1.1fr_1fr] gap-12 items-center">
         <div>
           <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3 mb-4">
             <Power size={30} className={active ? "text-red-400" : "text-gold-400"} />
@@ -191,7 +185,7 @@ export default function KillSwitch() {
             )}
           </div>
         </div>
-      </SectionReveal>
-    </section>
+      </div>
+    </div>
   );
 }

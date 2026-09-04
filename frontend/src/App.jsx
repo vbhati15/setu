@@ -2,15 +2,13 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { loadHarnessSummary, loadHarnessRecords } from "./lib/harness";
 import { paise } from "./lib/rules";
+import ShutterIntro from "./components/ShutterIntro";
 import Header from "./components/Header";
 import ScrollProgress from "./components/ScrollProgress";
 import Hero from "./components/Hero";
 import HowItWorks from "./components/HowItWorks";
-import StatsHeadline from "./components/StatsHeadline";
 import LiveFeed from "./components/LiveFeed";
-import DecisionTrace from "./components/DecisionTrace";
-import KillSwitch from "./components/KillSwitch";
-import AuditLog from "./components/AuditLog";
+import ProofTabs from "./components/ProofTabs";
 import SectionNav from "./components/SectionNav";
 import SectionReveal from "./components/SectionReveal";
 
@@ -58,22 +56,11 @@ export default function App() {
     ...(liveDecisionExample ? [liveDecisionExample] : []),
     ...(records.length ? pickDecisionExamples(records) : []),
   ];
-  const fallbackHarnessRecord = records.find(
-    (r) => r.category === "tight_budget" && r.response_body?.rounds >= 5
-  );
-  const fallbackFeedRecord = fallbackHarnessRecord && {
-    body: fallbackHarnessRecord.response_body,
-    scenario_id: fallbackHarnessRecord.scenario_id,
-  };
-
   const navSections = [
     { id: "hero", label: "Setu" },
     { id: "how-it-works", label: "How it works" },
     { id: "live-feed", label: "Live feed" },
-    ...(decisionExamples.length > 0 ? [{ id: "decision-trace", label: "Decision trace" }] : []),
-    { id: "stats", label: "Harness results" },
-    ...(records.length > 0 ? [{ id: "audit-log", label: "Audit log" }] : []),
-    { id: "kill-switch", label: "System status" },
+    { id: "proof", label: "Proof" },
   ];
 
   return (
@@ -83,16 +70,14 @@ export default function App() {
       transition={{ duration: 0.5 }}
       className="bg-ink-950 text-parchment-100 font-sans selection:bg-gold-500/30"
     >
+      <ShutterIntro />
       <Header />
       <ScrollProgress />
       <SectionNav sections={navSections} />
       <Hero summary={summary} />
       <HowItWorks />
-      <LiveFeed fallbackRecord={fallbackFeedRecord} onResult={setLiveResult} />
-      {decisionExamples.length > 0 && <DecisionTrace examples={decisionExamples} />}
-      <StatsHeadline summary={summary} />
-      {records.length > 0 && <AuditLog records={records} />}
-      <KillSwitch />
+      <LiveFeed onResult={setLiveResult} />
+      <ProofTabs decisionExamples={decisionExamples} summary={summary} records={records} />
 
       <section className="snap-panel flex flex-col items-center justify-center px-6 border-t border-ink-700">
         <SectionReveal className="flex flex-col items-center">

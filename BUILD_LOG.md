@@ -1,5 +1,136 @@
 # BUILD_LOG.md
 
+## 2026-09-04 — Day 4 Part 5: fixed the product-mismatch bug via `product_id` pinning; dashboard visual redesign (theme, header, proof tabs, intro)
+
+**Requested across the session**: fix the "try it yourself" product-mismatch
+bug logged as deliberately-unfixed in `docs/DECISIONS.md` (2026-09-04), plus
+a long series of visual/UX iterations on the dashboard: hero background
+motif, header content, how the four technical/proof sections are revealed,
+the color theme, and a page-load intro animation.
+
+**Fixed: product-mismatch bug (`docs/DECISIONS.md`, 2026-09-04 entry
+"USB-C Hub → Cable Organizer Kit mismatch")** — rather than fixing
+`BuyerAgent._find_candidate_product`'s keyword-matching heuristic itself
+(the single-letter-token + substring-containment bug identified but left
+unfixed in that entry), added an optional `product_id` field end-to-end:
+`NegotiateRequest.product_id` (`backend/app/main.py`) →
+`BuyerAgent.negotiate_and_purchase(goal_text, budget_paise, product_id=None)`
+(`backend/app/buyer_agent/agent.py`) — when given, looks the product up
+directly via `catalog.get(product_id)` and skips `_find_candidate_product`
+entirely; when omitted (the "Surprise me" random-scenario path, which only
+has free text, not an id), behavior is unchanged. `frontend/src/api.js`'s
+`postNegotiate` and `LiveFeed.jsx`'s `runCustom` now send the picker's
+`selectedProduct.id`. **The underlying keyword-matching bug in
+`_find_candidate_product` is still present and unfixed** — this closes the
+gap only for the picker path, which now bypasses that function altogether;
+it can still misfire for freeform "Surprise me" goal text, though the
+current `SCENARIOS` list is hand-picked to avoid triggering it.
+
+Verified against a locally running backend (two real, live multi-round
+Zeuthen negotiations, not mocked):
+- `product_id="wireless-mouse-ergo"`, budget 64,900 paise (well under the
+  129,900-paise list price): negotiation correctly stayed on the wireless
+  mouse and ended `success: False, reason: "negotiation ended without a
+  deal: stalemate after 4 round(s)"` — previously this exact case silently
+  matched `mouse-pad-xl` instead and reported a false "success".
+- Same product_id, budget 110,000 paise: stayed on the wireless mouse,
+  negotiated for 11 rounds, closed at `agreed_price_paise: 103780`.
+
+`pytest backend/tests -v` → still 122/122 passing (no test added yet for
+`product_id` specifically — see Known gaps below).
+
+**Dashboard visual redesign** (`frontend/`, extensive iteration, final
+state only summarized here):
+
+- **Hero backdrop** — went through a "Setu = bridge" SVG motif (a
+  suspension-bridge line with offer-pulses, several sizing/pulse-animation
+  bug fixes), then a `NegotiationTicker` card, before settling on
+  `AgentConnectionBackdrop.jsx` (new): two ambient pulsing nodes on the
+  hero's left/right edges with small packets traveling between them —
+  deliberately subtle (dot/line sizes fixed in plain px, not viewBox units,
+  after an earlier SVG version rendered oversized on wide viewports).
+- **Header** — iterated through several ideas (the negotiation ticker, a
+  live-status pulse pill, a scrolling audit-log marquee, a full-width
+  heartbeat/EKG line) and ended back at empty (just the scroll-shadow
+  strip) per explicit request to remove the last one tried, with no
+  replacement chosen yet.
+- **`ProofTabs.jsx` (new)** — replaced four separate always-mounted
+  full-page sections (`DecisionTrace`, `StatsHeadline`, `KillSwitch`,
+  `AuditLog`, each previously its own `snap-panel` with its own
+  `SectionBackdrop`) with one tabbed section: four buttons ("Decision
+  trace", "Test results", "Kill switch", "Audit log"), one panel mounted
+  at a time with a framer-motion expand/fade, amber-family active-tab
+  styling. The four components were converted to bare content (no more
+  standalone `<section>`/backdrop/id of their own). Hero's stat badges
+  that used to `scrollIntoView` a specific section id now go through a new
+  `frontend/src/lib/proofNav.js` (`goToProofTab`, a small `CustomEvent`
+  pub/sub `ProofTabs` listens for) so they still deep-link into the right
+  tab without prop-drilling tab state through `App.jsx`.
+- **`NegotiationTicker.jsx` (new)** — an Ask/Bid card that ticks through
+  scripted negotiation rounds to a settled "Agreed" state, looping; gained
+  a `size="lg"` variant and a `full` prop (stretches to its container width,
+  spreads Ask/Round/Bid to the edges) for its final placement below the
+  "How it works" three-card grid.
+- **Theme: gold → emerald → crimson** — the original gold/parchment/ink
+  palette (`tailwind.config.js`) was replaced twice on request: first with
+  a custom `emerald` scale (Tailwind's own default emerald values), then
+  — because it "didn't like this green" — with a custom `crimson` scale.
+  The first crimson attempt (`#fda4af`/`#fb7185`/`#f43f5e`/`#e11d48`, a
+  rose/pink hue) read as washed-out pink rather than red, especially on
+  low-opacity outline buttons; corrected to a true saturated scarlet
+  (`#f87171`/`#ef4444`/`#dc2626`/`#b91c1c`, one shade off Tailwind's own
+  `red` scale) after the user flagged it. Every `gold-*`/`emerald-*`
+  Tailwind class and every hardcoded hex/`rgba(...)` gold value across ~20
+  files was mechanically renamed/swapped each time (`sed`, not manual
+  per-file edits, given the volume), plus one dead reference fixed along
+  the way (`text-gold-200` was never a defined shade, so it rendered
+  invisibly; now a defined shade). **Known overlap, flagged to the user
+  and accepted**: the app's existing danger/error states (kill-switch
+  active, rejected outcomes, failed checklist steps) use Tailwind's
+  built-in `red-*` scale, which is now in the same red family as the new
+  `crimson` brand accent — differentiated by hue choice, not by being a
+  wholly different color.
+- **`ShutterIntro.jsx` (new)** — a page-load intro: two full-width panels
+  (top/bottom half of the viewport) each render the *same* "Setu" wordmark
+  + tagline, clipped via `overflow: hidden` so each panel only shows its
+  half (top panel shows the top half, bottom panel the bottom half) — the
+  two halves line up into one seamless logo when closed. After a ~900ms
+  hold, the panels slide apart (`y: "-100%"`/`"100%"`) with a brief
+  crimson flash along the seam, the logo splitting and riding away with
+  them to reveal the hero underneath. Locks `document.body.style.overflow`
+  during the intro, restores it and fully unmounts once the slide finishes.
+- **`LiveFeed.jsx`** — no longer shows a fallback/previous negotiation on
+  page load; the negotiation chat now only appears after the visitor
+  clicks "Start negotiation" or "Surprise me" (`source = result`, not
+  `result || fallbackRecord`). The now-dead `fallbackRecord` prop and its
+  `App.jsx`-side computation (`fallbackHarnessRecord`/`fallbackFeedRecord`)
+  were removed rather than left unused. Heading changed from "Live
+  negotiation feed" to "Your AI Agent"; both action buttons (`Surprise me`,
+  `Start negotiation`) restyled from an outline/ghost style to a solid
+  filled button matching the hero's primary CTA.
+- Small polish: `StatsHeadline.jsx`'s big count-up number had a soft
+  `0 0 50px` glow `textShadow` (a halo), changed to a crisp offset
+  `4px 6px 0px` drop shadow on request.
+
+**Verified throughout**: no `npm run dev` console/page errors across
+repeated headless-browser screenshot checks (every visual change in this
+entry was screenshotted and read back before being reported done, per this
+session's own instructions); `pytest backend/tests -v` → 122/122 after the
+`product_id` change.
+
+**Known gaps carried forward**:
+- No automated test covers the `product_id` pinning path specifically
+  (`test_negotiate_endpoint.py`/`test_buyer_agent.py` weren't extended this
+  session) — only the two manual live-backend runs above.
+- `_find_candidate_product`'s keyword-matching bug (short single-letter
+  tokens, substring containment) is still unfixed for the "Surprise me"
+  freeform-text path.
+- Nothing from this session is committed — see `git status`; all of the
+  files listed above are modified/new in the working tree.
+- Header currently has no content (see above) — was iterated through
+  several ideas and explicitly emptied on request, with no next direction
+  chosen yet as of session end.
+
 ## 2026-09-04 — Day 4 Part 4: interactive negotiation, live chat replay, product-first hero
 
 **Requested across several sessions**: turn the dashboard's live-trigger

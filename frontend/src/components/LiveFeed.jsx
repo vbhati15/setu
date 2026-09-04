@@ -35,7 +35,7 @@ function pickScenario() {
   return SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
 }
 
-export default function LiveFeed({ fallbackRecord, onResult }) {
+export default function LiveFeed({ onResult }) {
   const [state, setState] = useState("idle"); // idle | loading | done | error
   const [result, setResult] = useState(null);
   const [scenario, setScenario] = useState(null);
@@ -74,11 +74,11 @@ export default function LiveFeed({ fallbackRecord, onResult }) {
     return () => clearInterval(id);
   }, []);
 
-  const source = result || fallbackRecord;
+  const source = result;
   const trace = source?.body?.trace || [];
   const rounds = groupRoundsFromTrace(trace);
   const liveTelemetry = hasRiskTelemetry(trace);
-  const replayKey = result?.ts || fallbackRecord?.scenario_id;
+  const replayKey = result?.ts;
 
   async function run(customScenario) {
     if (cooldown > 0 || state === "loading") return;
@@ -88,7 +88,7 @@ export default function LiveFeed({ fallbackRecord, onResult }) {
     setError(null);
     const startedAt = Date.now();
     try {
-      const body = await postNegotiate(chosen.goal_text, chosen.budget_paise);
+      const body = await postNegotiate(chosen.goal_text, chosen.budget_paise, chosen.product_id);
       const ts = Date.now();
       setResult({ body, source: "live", scenario: chosen, ts });
       setState("done");
@@ -114,6 +114,7 @@ export default function LiveFeed({ fallbackRecord, onResult }) {
       label: `${selectedProduct.name} — your budget ₹${budgetRupees.toLocaleString("en-IN")}`,
       goal_text: selectedProduct.name,
       budget_paise: budgetPaise,
+      product_id: selectedProduct.id,
       custom: true,
     });
   }
@@ -125,7 +126,7 @@ export default function LiveFeed({ fallbackRecord, onResult }) {
       <div className="flex items-baseline justify-between flex-wrap gap-4 mb-3">
         <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3">
           <ScaleIcon size={28} className="text-gold-400" />
-          Live negotiation feed
+          Your AI Agent
           {result && (
             <motion.span
               initial={{ opacity: 0, scale: 0.8 }}
@@ -149,11 +150,11 @@ export default function LiveFeed({ fallbackRecord, onResult }) {
           <motion.button
             onClick={() => run()}
             disabled={state === "loading"}
-            whileHover={state !== "loading" ? { scale: 1.03, boxShadow: "0 0 24px rgba(230,185,90,0.2)" } : {}}
+            whileHover={state !== "loading" ? { scale: 1.03, boxShadow: "0 0 24px rgba(230,185,90,0.35)" } : {}}
             whileTap={{ scale: 0.97 }}
-            className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors
-              border-gold-500/40 bg-gold-500/10 text-gold-300 hover:bg-gold-500/20 hover:border-gold-500/70
-              disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gold-500/10"
+            className="inline-flex items-center gap-2 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950 transition-colors
+              hover:bg-gold-400 shadow-lg shadow-gold-500/20
+              disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gold-500"
           >
             {state === "loading" ? (
               <>
@@ -168,8 +169,8 @@ export default function LiveFeed({ fallbackRecord, onResult }) {
         )}
       </div>
       <p className="text-base text-parchment-400 leading-relaxed mb-8 max-w-3xl">
-        Your AI agent is negotiating in real time — pick your own budget and product below, or hit
-        "Surprise me" for a random scenario. Limited to one negotiation per minute.
+        Your AI agent is negotiating on your behalf, live — pick a budget and product below, or hit
+        "Surprise me" for a random scenario. You can run one negotiation per minute.
       </p>
 
       <form
@@ -230,9 +231,9 @@ export default function LiveFeed({ fallbackRecord, onResult }) {
             <motion.button
               type="submit"
               disabled={state === "loading" || !selectedProduct}
-              whileHover={state !== "loading" ? { scale: 1.03, boxShadow: "0 0 30px rgba(230,185,90,0.25)" } : {}}
+              whileHover={state !== "loading" ? { scale: 1.03, boxShadow: "0 0 30px rgba(230,185,90,0.35)" } : {}}
               whileTap={{ scale: 0.98 }}
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-gold-500/40 bg-gold-500/10 px-5 py-2.5 text-sm font-medium text-gold-300 hover:bg-gold-500/20 hover:border-gold-500/70 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gold-500/10"
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-gold-500 px-5 py-2.5 text-sm font-semibold text-ink-950 hover:bg-gold-400 shadow-lg shadow-gold-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gold-500"
             >
               {state === "loading" ? (
                 <>
@@ -262,9 +263,6 @@ export default function LiveFeed({ fallbackRecord, onResult }) {
         <div className="mb-4 text-xs text-parchment-500">
           {scenario.label} · {new Date(result.ts).toLocaleTimeString()}
         </div>
-      )}
-      {!result && fallbackRecord && (
-        <div className="mb-4 text-xs text-parchment-500">Showing a previous negotiation.</div>
       )}
 
       {liveTelemetry && rounds.length >= 2 && (

@@ -96,17 +96,31 @@ class BuyerAgent:
 
     # -- public API -------------------------------------------------------
 
-    def negotiate_and_purchase(self, goal_text: str, budget_paise: int) -> NegotiationOutcome:
+    def negotiate_and_purchase(
+        self, goal_text: str, budget_paise: int, product_id: str | None = None
+    ) -> NegotiationOutcome:
         trace: list[NegotiationTrace] = []
 
-        candidate = self._find_candidate_product(goal_text, budget_paise)
-        if candidate is None:
-            reason = (
-                f"no catalog product matches goal '{goal_text}' within "
-                f"{self.settings.buyer_price_ceiling_factor}x budget ({budget_paise} paise)"
-            )
-            trace.append(NegotiationTrace(0, "system", reason))
-            return NegotiationOutcome(success=False, reason=reason, trace=trace)
+        # A caller that already knows exactly which catalog product it wants
+        # (e.g. the dashboard's product picker) pins that product directly,
+        # bypassing keyword/price-ceiling matching entirely -- that matching
+        # is a *discovery* aid for free-text goals, not a filter that should
+        # override an explicit choice.
+        if product_id is not None:
+            candidate = self.catalog.get(product_id)
+            if candidate is None:
+                reason = f"no catalog product with id '{product_id}'"
+                trace.append(NegotiationTrace(0, "system", reason))
+                return NegotiationOutcome(success=False, reason=reason, trace=trace)
+        else:
+            candidate = self._find_candidate_product(goal_text, budget_paise)
+            if candidate is None:
+                reason = (
+                    f"no catalog product matches goal '{goal_text}' within "
+                    f"{self.settings.buyer_price_ceiling_factor}x budget ({budget_paise} paise)"
+                )
+                trace.append(NegotiationTrace(0, "system", reason))
+                return NegotiationOutcome(success=False, reason=reason, trace=trace)
 
         quote = self.merchant_agent.handle_request(candidate.id)
         if quote.status_code != 402:

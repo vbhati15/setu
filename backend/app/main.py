@@ -136,6 +136,9 @@ def get_product(
 class NegotiateRequest(BaseModel):
     goal_text: str = Field(min_length=1, max_length=500)
     budget_paise: int = Field(gt=0, le=100_000_000)
+    # Optional: pins negotiation to this exact catalog product (e.g. from the
+    # dashboard's product picker), bypassing goal_text keyword matching.
+    product_id: str | None = Field(default=None, max_length=64)
 
 
 def _outcome_to_dict(outcome) -> dict:
@@ -171,7 +174,7 @@ def _outcome_to_dict(outcome) -> dict:
 @app.post("/negotiate")
 def negotiate(body: NegotiateRequest) -> dict:
     buyer = get_buyer_agent()
-    outcome = buyer.negotiate_and_purchase(body.goal_text, body.budget_paise)
+    outcome = buyer.negotiate_and_purchase(body.goal_text, body.budget_paise, product_id=body.product_id)
     return _outcome_to_dict(outcome)
 
 

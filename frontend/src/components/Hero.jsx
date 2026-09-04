@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowDown, ArrowRight } from "lucide-react";
+import AgentConnectionBackdrop from "./AgentConnectionBackdrop";
+import { goToProofTab } from "../lib/proofNav";
 
 const ROTATING_LINES = ["Real payments.", "Real negotiation.", "Real guardrails."];
 
@@ -95,19 +97,20 @@ export default function Hero({ summary }) {
         animate={{ opacity: [0.6, 0.95, 0.75, 1, 0.6] }}
         transition={{ duration: 3, times: [0, 0.2, 0.4, 0.55, 1], repeat: Infinity, ease: "easeInOut" }}
       />
+      <AgentConnectionBackdrop />
 
       {summary && (
         <>
-          <FloatingBadge className="top-[22%] left-[10%]" delay={0.9} onClick={() => scrollTo("audit-log")}>
+          <FloatingBadge className="top-[22%] left-[10%]" delay={0.9} onClick={() => goToProofTab("audit-log")}>
             {summary.total_http_calls} real negotiations, verified
           </FloatingBadge>
-          <FloatingBadge className="top-[30%] right-[9%]" delay={1.15} onClick={() => scrollTo("decision-trace")}>
+          <FloatingBadge className="top-[30%] right-[9%]" delay={1.15} onClick={() => goToProofTab("decision-trace")}>
             {summary.outcomes?.compliant ?? 0} deals closed, zero unauthorized
           </FloatingBadge>
           <FloatingBadge className="bottom-[26%] left-[14%]" delay={1.4} onClick={() => scrollTo("how-it-works")}>
             Every offer explained
           </FloatingBadge>
-          <FloatingBadge className="bottom-[20%] right-[13%]" delay={1.65} onClick={() => scrollTo("kill-switch")}>
+          <FloatingBadge className="bottom-[20%] right-[13%]" delay={1.65} onClick={() => goToProofTab("kill-switch")}>
             Nothing moves without a reason
           </FloatingBadge>
         </>
@@ -147,7 +150,7 @@ export default function Hero({ summary }) {
             whileTap={{ scale: 0.98 }}
             className="inline-flex items-center gap-2 rounded-md bg-gold-500 px-6 py-3 text-sm font-semibold text-ink-950 hover:bg-gold-400 transition-colors shadow-lg shadow-gold-500/20"
           >
-            See it negotiate
+            Meet your agent
             <motion.span animate={{ y: [0, 3, 0] }} transition={{ duration: 1.4, repeat: Infinity }}>
               <ArrowDown size={15} />
             </motion.span>

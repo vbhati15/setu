@@ -38,7 +38,7 @@ function Avatar({ speaker }) {
   return (
     <div
       className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-medium ${
-        speaker === "merchant" ? "bg-gold-500/25 text-gold-200" : "bg-ink-600 text-parchment-200"
+        speaker === "merchant" ? "bg-gold-500/25 text-parchment-100" : "bg-ink-600 text-parchment-200"
       }`}
     >
       {speaker === "merchant" ? "S" : "Y"}
