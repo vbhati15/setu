@@ -9,10 +9,10 @@ const COLORS = {
 };
 
 const LABELS = {
-  compliant: "compliant",
-  escalated: "escalated",
-  rejected: "rejected",
-  graceful_no_match: "graceful no-match",
+  compliant: "Completed successfully",
+  escalated: "Flagged for review",
+  rejected: "Blocked automatically",
+  graceful_no_match: "No good deal found",
   failed_verification: "verification failed",
 };
 
@@ -60,12 +60,19 @@ export default function OutcomeDonut({ outcomes }) {
       </svg>
       <div className="space-y-2">
         {segments.map((s) => (
-          <div key={s.key} className="flex items-center gap-3 text-sm font-mono">
-            <span className="w-3 h-3 rounded-full inline-block" style={{ background: COLORS[s.key] }} />
-            <span className="text-parchment-300">{LABELS[s.key] || s.key}</span>
-            <span className="text-parchment-500">
-              {s.value} ({Math.round(s.frac * 100)}%)
-            </span>
+          <div key={s.key}>
+            <div className="flex items-center gap-3 text-sm font-mono">
+              <span className="w-3 h-3 rounded-full inline-block" style={{ background: COLORS[s.key] }} />
+              <span className="text-parchment-300">{LABELS[s.key] || s.key}</span>
+              <span className="text-parchment-500">
+                {s.value} ({Math.round(s.frac * 100)}%)
+              </span>
+            </div>
+            {s.key === "graceful_no_match" && (
+              <div className="text-xs text-parchment-500/70 italic ml-6 mt-0.5">
+                a good outcome — no deal made sense here
+              </div>
+            )}
           </div>
         ))}
       </div>

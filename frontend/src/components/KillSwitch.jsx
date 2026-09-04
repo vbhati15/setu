@@ -6,7 +6,7 @@ import { getKillSwitchStatus, activateKillSwitch, deactivateKillSwitch } from ".
 export default function KillSwitch() {
   const [status, setStatus] = useState(null);
   const [adminKey, setAdminKey] = useState("");
-  const [reason, setReason] = useState("manually triggered from dashboard");
+  const [reason, setReason] = useState("Activated manually from the dashboard");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [confirming, setConfirming] = useState(false);
@@ -73,18 +73,16 @@ export default function KillSwitch() {
         />
       )}
 
-      <div className="relative grid lg:grid-cols-[1.1fr_1fr] gap-12 items-center">
+      <div className="relative grid lg:grid-cols-[1.1fr_1fr] gap-8 items-center">
         <div>
-          <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3 mb-4">
-            <Power size={30} className={active ? "text-red-400" : "text-gold-400"} />
+          <h2 className="text-2xl sm:text-3xl font-semibold text-parchment-100 flex items-center gap-3 mb-2">
+            <Power size={24} className={active ? "text-red-400" : "text-gold-400"} />
             Kill switch
           </h2>
-          <p className="text-base text-parchment-400 leading-relaxed max-w-lg">
-            A single global flag checked before every other trust rule on every purchase, across both{" "}
-            <code className="font-mono text-parchment-300">/negotiate</code> and{" "}
-            <code className="font-mono text-parchment-300">/products/&#123;id&#125;</code>. This panel calls the
-            real <code className="font-mono text-parchment-300">/admin/kill-switch/*</code> endpoints — activating
-            it here actually halts new transactions on the live backend.
+          <p className="text-sm text-parchment-400 leading-relaxed max-w-lg">
+            One switch, complete control. If something looks wrong, this instantly stops every new
+            transaction — no exceptions, no delay. This isn't a demo toggle — it's connected to the real,
+            live system.
           </p>
 
           <motion.div
@@ -100,7 +98,7 @@ export default function KillSwitch() {
                 : {}
             }
             transition={{ duration: 2, repeat: active ? Infinity : 0 }}
-            className={`mt-8 rounded-xl border p-6 ${
+            className={`mt-5 rounded-xl border p-5 ${
               active ? "border-red-900/60 bg-red-950/20" : "border-ink-700 bg-ink-900/50"
             }`}
           >
@@ -122,14 +120,14 @@ export default function KillSwitch() {
           </motion.div>
         </div>
 
-        <div className="rounded-xl border border-ink-700 bg-ink-900/40 p-6 sm:p-8 space-y-4">
+        <div className="rounded-xl border border-ink-700 bg-ink-900/40 p-5 sm:p-6 space-y-3">
           <div className="text-xs font-mono uppercase tracking-wide text-parchment-500">Admin controls</div>
           <input
             type="password"
             placeholder="X-ADMIN-KEY"
             value={adminKey}
             onChange={(e) => setAdminKey(e.target.value)}
-            className="w-full rounded-md border border-ink-700 bg-ink-950 px-4 py-3 text-sm font-mono text-parchment-100 placeholder:text-parchment-500 focus:outline-none focus:border-gold-500/50"
+            className="w-full rounded-md border border-ink-700 bg-ink-950 px-4 py-2.5 text-sm font-mono text-parchment-100 placeholder:text-parchment-500 focus:outline-none focus:border-gold-500/50"
           />
 
           {!active && (
@@ -138,7 +136,7 @@ export default function KillSwitch() {
               placeholder="reason"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="w-full rounded-md border border-ink-700 bg-ink-950 px-4 py-3 text-sm text-parchment-100 placeholder:text-parchment-500 focus:outline-none focus:border-gold-500/50"
+              className="w-full rounded-md border border-ink-700 bg-ink-950 px-4 py-2.5 text-sm text-parchment-100 placeholder:text-parchment-500 focus:outline-none focus:border-gold-500/50"
             />
           )}
 
@@ -155,7 +153,7 @@ export default function KillSwitch() {
                 whileTap={{ scale: 0.98 }}
                 onClick={handleDeactivate}
                 disabled={busy || !adminKey}
-                className="inline-flex items-center gap-2 rounded-md border border-gold-500/40 bg-gold-500/10 px-5 py-3 text-sm font-medium text-gold-300 hover:bg-gold-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 rounded-md border border-gold-500/40 bg-gold-500/10 px-5 py-2.5 text-sm font-medium text-gold-300 hover:bg-gold-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {busy && <Loader2 size={14} className="animate-spin" />} Deactivate
               </motion.button>
@@ -165,7 +163,7 @@ export default function KillSwitch() {
                 whileTap={{ scale: 0.98 }}
                 onClick={handleActivate}
                 disabled={busy || !adminKey}
-                className={`inline-flex items-center gap-2 rounded-md border px-5 py-3 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed ${
+                className={`inline-flex items-center gap-2 rounded-md border px-5 py-2.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed ${
                   confirming
                     ? "border-red-500/70 bg-red-500/20 text-red-300"
                     : "border-red-900/50 bg-red-950/30 text-red-400 hover:bg-red-950/50"

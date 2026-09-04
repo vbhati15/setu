@@ -5,8 +5,8 @@ import { useCountUp } from "../lib/useCountUp";
 import OutcomeDonut from "./charts/OutcomeDonut";
 
 const RULE_LABELS = {
-  daily_spend: "daily spend cap breach",
-  credential_scope: "credential-scope violation",
+  daily_spend: "Tried to spend more than the daily limit allows",
+  credential_scope: "Tried to act outside what it's authorized to do",
   velocity: "velocity limit breach",
   spend_cap: "per-transaction spend cap breach",
   category: "category-policy violation",
@@ -22,7 +22,7 @@ export default function StatsHeadline({ summary }) {
   const inView = useInView(ref, { once: true, margin: "0px 0px -10% 0px" });
 
   if (!summary) return <div ref={ref} />;
-  const { outcomes, rules_fired, total_named_scenarios, total_http_calls, base_url } = summary;
+  const { outcomes, rules_fired, total_named_scenarios, total_http_calls } = summary;
   const compliant = outcomes.compliant || 0;
   const blocked = Object.entries(rules_fired || {});
 
@@ -33,9 +33,8 @@ export default function StatsHeadline({ summary }) {
         Scenario harness results
       </h2>
       <p className="text-sm text-parchment-400 leading-relaxed mb-5 max-w-3xl">
-        A real black-box HTTP test run against the live deployment at{" "}
-        <span className="font-mono text-parchment-300">{base_url}</span> — {total_named_scenarios} named
-        scenarios, {total_http_calls} total calls, logged in full.
+        We tested Setu against {total_named_scenarios} real-world situations — including ones designed to
+        try to break it. Here's exactly what happened, every time.
       </p>
 
       <div className="grid lg:grid-cols-[1.1fr_1fr] gap-8 items-center mb-6">
@@ -49,9 +48,9 @@ export default function StatsHeadline({ summary }) {
       </div>
 
       <div className="grid sm:grid-cols-4 gap-4 mb-6">
-        <Stat label="escalated" value={outcomes.escalated || 0} inView={inView} delay={0.1} />
-        <Stat label="rejected" value={outcomes.rejected || 0} inView={inView} delay={0.2} />
-        <Stat label="graceful no-match" value={outcomes.graceful_no_match || 0} inView={inView} delay={0.3} />
+        <Stat label="flagged for review" value={outcomes.escalated || 0} inView={inView} delay={0.1} />
+        <Stat label="blocked automatically" value={outcomes.rejected || 0} inView={inView} delay={0.2} />
+        <Stat label="no good deal found" value={outcomes.graceful_no_match || 0} inView={inView} delay={0.3} />
         <Stat label="named scenarios" value={total_named_scenarios} inView={inView} delay={0.4} />
       </div>
 
@@ -62,7 +61,7 @@ export default function StatsHeadline({ summary }) {
         className="rounded-lg border border-ink-700 bg-ink-900/50 p-4"
       >
         <div className="text-xs font-mono uppercase tracking-wide text-parchment-500 mb-3">
-          Blocked, by rule (real breaches this run deliberately triggered)
+          During testing, we deliberately tried to break these rules — here's what got caught:
         </div>
         {blocked.length === 0 ? (
           <div className="text-sm text-parchment-500">no rules fired in this run</div>

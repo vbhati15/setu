@@ -10,6 +10,10 @@ html {
      you're close, but lets the scroll itself move at a natural pace so the
      reveal animation is actually visible while it happens. */
   scroll-snap-type: y proximity;
+  /* Every Tailwind spacing/sizing/type utility here is rem-based, so this is
+     the same lever a browser's own 90% zoom pulls -- one global dial instead
+     of re-tuning every component's padding/font-size by hand. */
+  font-size: 80%;
 }
 
 body {

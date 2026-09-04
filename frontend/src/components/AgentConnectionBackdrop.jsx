@@ -136,10 +136,10 @@ export default function AgentConnectionBackdrop({ className = "" }) {
       />
 
       <div className="absolute top-1/2 left-[8%] -translate-y-1/2">
-        <Globe size={168} delay={0.2} spinDuration={70} light="#f0cd7c" mid="#b8842e" dark="#161310" id="left" />
+        <Globe size={128} delay={0.2} spinDuration={70} light="#f0cd7c" mid="#b8842e" dark="#161310" id="left" />
       </div>
       <div className="absolute top-1/2 right-[8%] -translate-y-1/2">
-        <Globe size={190} delay={1.4} spinDuration={82} light="#f0cd7c" mid="#b8842e" dark="#161310" id="right" />
+        <Globe size={128} delay={1.4} spinDuration={82} light="#f0cd7c" mid="#b8842e" dark="#161310" id="right" />
       </div>
 
       <Packet reverse={false} delay={0.6} color="#f0cd7c" />

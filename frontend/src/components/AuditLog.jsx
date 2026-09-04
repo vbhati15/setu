@@ -9,11 +9,11 @@ export default function AuditLog({ records }) {
 
   return (
     <div className="relative w-full">
-      <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3 mb-4">
-        <ScrollText size={30} className="text-gold-400" />
+      <h2 className="text-2xl sm:text-3xl font-semibold text-parchment-100 flex items-center gap-3 mb-2">
+        <ScrollText size={24} className="text-gold-400" />
         Audit log
       </h2>
-      <p className="text-base text-parchment-400 leading-relaxed mb-8 max-w-3xl">
+      <p className="text-sm text-parchment-400 leading-relaxed mb-4 max-w-3xl">
         Every HTTP call from the scenario harness run, in order — real transaction IDs, real timestamps,
         real latencies.
       </p>
@@ -29,7 +29,7 @@ export default function AuditLog({ records }) {
         ))}
       </div>
 
-      <div className="rounded-lg border border-ink-700 bg-ink-950 max-h-[480px] overflow-y-auto font-mono text-sm">
+      <div className="rounded-lg border border-ink-700 bg-ink-950 max-h-[380px] overflow-y-auto font-mono text-sm">
         <AnimatePresence initial={false}>
           {filtered.map((r, i) => (
             <motion.div

@@ -52,7 +52,7 @@ export default function ProofTabs({ decisionExamples, summary, records }) {
   return (
     <section
       id="proof"
-      className="snap-panel relative overflow-hidden flex flex-col justify-center py-10 border-t border-ink-700 w-full"
+      className="snap-panel relative overflow-hidden flex flex-col justify-center pt-16 pb-4 border-t border-ink-700 w-full"
     >
       <SectionBackdrop />
       <SectionReveal className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
