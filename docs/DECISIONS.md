@@ -2,6 +2,81 @@
 
 Running log of non-obvious decisions and why they were made. Newest first.
 
+## 2026-09-05 — Raw-paise-in-user-facing-text: full sweep, root-caused, and closed with a shared formatter
+
+This bug (a raw paise integer showing up somewhere a person reads it as
+rupees) had been found and patched piecemeal several times already — each
+fix closed one spot without ever asking "where else could this be." Did a
+complete sweep this time instead of another one-off patch.
+
+**Frontend was already clean.** Every `paise` match in `frontend/src/` was
+either the `_paise` variable-name suffix, the shared `paise()` formatter
+itself, or a comment — no raw display anywhere. The bug was never in the
+frontend; it was in backend-generated text the frontend renders verbatim.
+
+**Two live, user-visible bugs found in `backend/app/buyer_agent/agent.py`**:
+the "accept list price outright" trace line and the "upsell offered" trace
+line were both plain f-strings with `{amount} paise` in them, and — unlike
+the per-round negotiation messages, which are LLM-phrased or fall back to
+`_fallback_phrase`'s correct rupee formatting — these two bypassed that path
+entirely, went straight into the chat as `buyer`/`merchant`-speaker trace
+lines, and rendered raw in the live two-party chat. One of these was already
+visible, unnoticed, in a real screenshot taken earlier in this very session
+("Budget covers list price (349900 paise) -- accepting outright.") — proof
+this wasn't a hypothetical, it was live.
+
+**A third, more important bug class found in `backend/app/trust/`**
+(`daily_spend.py`, `guard.py`, `policy.py`): every `TrustGuard`
+rejection/escalation reason string embedded raw paise. This was assumed
+safe because the primary chat card never renders raw `reason` text (see the
+2026-09-04 "plain-language layer" entry below) — but `frontend/src/App.jsx`
+(`liveDecisionExample`, lines 44-58) injects the **real, live** `/negotiate`
+response as the first entry into the Decision Trace panel's example list,
+and `DecisionTrace.jsx` renders that raw reason text verbatim *by design*
+(the whole point of that panel is showing the exact backend string, not a
+paraphrase — see the 2026-09-04 entry on why). A live TrustGuard rejection
+would have shown "1809400 paise already spent... cap is
+max_daily_spend_paise=2000000 paise" directly in a real, live-visible panel.
+This was the one none of the earlier piecemeal fixes had ever caught,
+because it required tracing the actual live-example wiring in `App.jsx`,
+not just re-checking the primary chat card again.
+
+**Root cause of the recurrence**: no shared formatting utility existed on
+the backend. `_fallback_phrase` had its own inline `f"₹{x/100:,.2f}"`;
+every other message was a raw f-string. Fixed structurally, not just at
+each call site: new `backend/app/formatting.py`, one function
+(`format_rupees`), and every call site that states a rupee amount in
+user-facing text — 8 in `buyer_agent/agent.py`, plus one each in
+`daily_spend.py`/`guard.py`/`policy.py` — now goes through it. Config field
+names (`max_daily_spend_paise=`, `max_spend_paise=`) were kept in the
+rejection reasons since they're useful technical identifiers, not raw
+numbers a person could misread as rupees; only the numeric *values* changed
+to `format_rupees(...)`.
+
+**One test was itself asserting on a raw paise number**
+(`test_daily_spend.py::test_recorded_spend_accumulates_toward_cap` checked
+`"5000" in reason`, i.e. 5000 *paise*) — updated to assert
+`format_rupees(5000) in reason` and `"5000" not in reason` instead. That is
+the correct fix, not a workaround: the test was validating the exact
+behavior this whole sweep exists to eliminate.
+
+**Verified live, not just read**: restarted the local backend (which
+surfaced an unrelated but real second issue — an orphaned uvicorn worker
+process, a leftover multiprocessing child of an already-killed reloader,
+still silently serving stale pre-fix responses; killed the whole process
+tree and started one clean instance), then ran two real negotiations and
+one deliberate TrustGuard rejection against it:
+- Comfortable-budget accept: `"Budget covers list price (₹3,499.00) --
+  accepting outright."`
+- An 11-round real Zeuthen negotiation: every buyer/merchant offer and the
+  closing `"Agreement reached at ₹352.12."` correctly formatted.
+- A deliberate credential-scope breach (₹18,999 item against a ₹5,000 cap):
+  `"requested amount ₹18,999.00 exceeds this agent's credential scope
+  (max_spend_paise=₹5,000.00)"` — exactly the string that reaches the live
+  Decision Trace panel.
+
+`pytest backend/tests` → 140/140 passing; `npm run build` clean.
+
 ## 2026-09-05 — Negotiation-round phrasing calls parallelized: ~24 sequential Gemini calls to ~1
 
 "Start negotiation" could take close to a minute. Root cause: a tight-budget

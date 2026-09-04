@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.app.config import Settings
+from backend.app.formatting import format_rupees
 
 
 @dataclass
@@ -50,8 +51,8 @@ class PolicyEngine:
             return PolicyDecision.escalated(
                 rule="spend_cap",
                 reason=(
-                    f"transaction amount {price_paise} paise exceeds the platform's "
-                    f"max_single_transaction_paise cap of {cap} paise"
+                    f"transaction amount {format_rupees(price_paise)} exceeds the platform's "
+                    f"max_single_transaction_paise cap of {format_rupees(cap)}"
                 ),
             )
         return PolicyDecision.ok()

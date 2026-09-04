@@ -1,5 +1,74 @@
 # BUILD_LOG.md
 
+## 2026-09-05 — Day 7: full raw-paise audit, root-caused and closed with a shared formatter
+
+**Requested**: this exact bug — a raw paise integer showing up somewhere a
+person reads it as rupees — had already been found and fixed piecemeal
+several times before. Asked for one complete, final sweep instead of
+another one-off patch: grep the whole frontend, check the backend for
+unconverted API values, confirm every display location shares one
+formatting utility (creating one if it didn't exist), and prove it with
+real triggered negotiations, not just a code read.
+
+**Frontend: clean.** `grep -rn "paise" frontend/src/` — every match was the
+`_paise` variable-name suffix, the shared `paise()` formatter itself
+(`frontend/src/lib/rules.js`), or a comment. The bug was never in the
+frontend; it was in backend-generated text the frontend renders verbatim.
+
+**Found: two live, currently-visible bugs in
+`backend/app/buyer_agent/agent.py`** — the "accept list price outright" and
+"upsell offered" trace lines were plain f-strings with raw
+`{amount} paise` in them, sent to the chat as `buyer`/`merchant`-speaker
+lines (unlike the per-round negotiation messages, which already went
+through correct rupee formatting). One of these was already sitting,
+unnoticed, in a real screenshot from earlier in this same session:
+`"Budget covers list price (349900 paise) -- accepting outright."`
+
+**Found: a third, more consequential bug class in `backend/app/trust/`**
+(`daily_spend.py`, `guard.py`, `policy.py`) — every TrustGuard
+rejection/escalation reason string embedded raw paise. Assumed safe at
+first, since the primary chat card never shows raw `reason` text — but
+tracing `frontend/src/App.jsx` (`liveDecisionExample`) showed it injects
+the **real, live** `/negotiate` response into the Decision Trace panel,
+which renders raw backend reason text verbatim *by design*. A live
+TrustGuard rejection would have put "1809400 paise already spent... cap is
+max_daily_spend_paise=2000000 paise" directly into a real, visible panel —
+the one leak none of the earlier piecemeal fixes had ever caught.
+
+**Fixed structurally, not per-spot**: new `backend/app/formatting.py`
+(`format_rupees`), adopted at every call site that states a rupee amount in
+user-facing text — 8 in `buyer_agent/agent.py` plus one each in
+`daily_spend.py`/`guard.py`/`policy.py`. Config field names
+(`max_daily_spend_paise=`, `max_spend_paise=`) were kept in reasons as
+useful technical identifiers; only the numeric values changed. One test
+(`test_daily_spend.py::test_recorded_spend_accumulates_toward_cap`) was
+itself asserting on a raw paise number (`"5000" in reason`) — updated to
+assert the rupee-formatted value instead, since the test was validating the
+exact thing this sweep exists to eliminate.
+
+**Verified live, not just read** — and this surfaced an unrelated but real
+second issue along the way: restarting the local backend to test the fix
+revealed an *orphaned* uvicorn worker process (a leftover multiprocessing
+child of a reloader killed earlier in the session) still silently serving
+stale pre-fix responses on the same port. Killed the full process tree,
+started one clean instance, then ran real requests against it:
+- Comfortable-budget accept: `"Budget covers list price (₹3,499.00) --
+  accepting outright."`
+- An 11-round real Zeuthen negotiation: every offer and the closing
+  `"Agreement reached at ₹352.12."` correctly formatted.
+- A deliberate credential-scope breach (₹18,999 item, ₹5,000 cap):
+  `"requested amount ₹18,999.00 exceeds this agent's credential scope
+  (max_spend_paise=₹5,000.00)"` — the exact string that reaches the live
+  Decision Trace panel.
+
+`pytest backend/tests` → 140/140 passing; `npm run build` clean. Full
+reasoning in `docs/DECISIONS.md`.
+
+**Closed.** Nothing else remains — a final backend-wide grep for
+`"} paise"` returns only the one intentional line (the LLM prompt in
+`_phrase()`, which correctly needs the raw value to convert accurately, and
+is never shown to a user).
+
 ## 2026-09-05 — Day 6: signed transaction certificates, negotiation-latency fix, judge-facing README rewrite, and the last open gap closed for real
 
 **Requested across the session**: fix "Start negotiation" taking close to a

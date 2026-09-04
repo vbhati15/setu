@@ -15,6 +15,8 @@ import threading
 import time
 from collections import defaultdict, deque
 
+from backend.app.formatting import format_rupees
+
 DAY_SECONDS = 86_400
 
 
@@ -43,8 +45,9 @@ class DailySpendTracker:
         if projected > cap_paise:
             return False, (
                 f"agent '{agent_id}' would exceed its daily spend cap: "
-                f"{already_spent} paise already spent in the last 24h + {amount_paise} paise "
-                f"requested = {projected} paise, cap is max_daily_spend_paise={cap_paise} paise"
+                f"{format_rupees(already_spent)} already spent in the last 24h + "
+                f"{format_rupees(amount_paise)} requested = {format_rupees(projected)}, "
+                f"cap is max_daily_spend_paise={format_rupees(cap_paise)}"
             )
         return True, None
 

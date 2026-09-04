@@ -31,6 +31,7 @@ from backend.app.catalog import Catalog, Product, get_catalog
 from backend.app.checkout_quote import build_quote_token
 from backend.app.config import Settings, get_settings
 from backend.app.fake_razorpay import FakeRazorpayClient
+from backend.app.formatting import format_rupees
 from backend.app.llm.base import LLMClient
 from backend.app.merchant_agent import MerchantAgent
 from backend.app.trust.identity import AgentIdentity, build_signed_request
@@ -173,7 +174,7 @@ class BuyerAgent:
             if candidate is None:
                 reason = (
                     f"no catalog product matches goal '{goal_text}' within "
-                    f"{self.settings.buyer_price_ceiling_factor}x budget ({budget_paise} paise)"
+                    f"{self.settings.buyer_price_ceiling_factor}x budget ({format_rupees(budget_paise)})"
                 )
                 trace.append(NegotiationTrace(0, "system", reason))
                 return NegotiationOutcome(success=False, reason=reason, trace=trace)
@@ -184,7 +185,7 @@ class BuyerAgent:
             trace.append(NegotiationTrace(0, "system", reason))
             return NegotiationOutcome(success=False, reason=reason, product=candidate, trace=trace)
         list_price_paise = int(quote.body["accepts"][0]["maxAmountRequired"])
-        match_note = f"Matched product '{candidate.name}' ({candidate.id}), list price {list_price_paise} paise."
+        match_note = f"Matched product '{candidate.name}' ({candidate.id}), list price {format_rupees(list_price_paise)}."
         occasion_note = _OCCASION_NOTES.get(occasion)
         if occasion_note:
             match_note += f" {occasion_note}"
@@ -210,7 +211,7 @@ class BuyerAgent:
         auto_pay: bool = True,
     ) -> NegotiationOutcome:
         trace.append(
-            NegotiationTrace(0, "buyer", f"Budget covers list price ({list_price_paise} paise) -- accepting outright.")
+            NegotiationTrace(0, "buyer", f"Budget covers list price ({format_rupees(list_price_paise)}) -- accepting outright.")
         )
 
         if not auto_pay:
@@ -261,7 +262,7 @@ class BuyerAgent:
         outcome.trace.append(
             NegotiationTrace(
                 0, "merchant",
-                f"Upsell offered: {upsell_product.name} at {discounted_price} paise "
+                f"Upsell offered: {upsell_product.name} at {format_rupees(discounted_price)} "
                 f"({upsell_body['discountPercent']}% off) -- {upsell_body.get('reason', '')}",
             )
         )
@@ -342,7 +343,7 @@ class BuyerAgent:
             trace.append(NegotiationTrace(len(rounds), "system", "Awaiting your payment to confirm this purchase."))
             return NegotiationOutcome(
                 success=True,
-                reason=f"negotiated agreement at {agreed_price} paise after {len(rounds)} round(s) -- awaiting your payment",
+                reason=f"negotiated agreement at {format_rupees(agreed_price)} after {len(rounds)} round(s) -- awaiting your payment",
                 product=product,
                 agreed_price_paise=agreed_price,
                 rounds=rounds,
@@ -359,7 +360,7 @@ class BuyerAgent:
 
         return NegotiationOutcome(
             success=True,
-            reason=f"negotiated agreement at {agreed_price} paise after {len(rounds)} round(s)",
+            reason=f"negotiated agreement at {format_rupees(agreed_price)} after {len(rounds)} round(s)",
             product=product,
             agreed_price_paise=agreed_price,
             transaction_id=purchase,
@@ -417,7 +418,7 @@ class BuyerAgent:
             )
             if r.deal:
                 trace.append(
-                    NegotiationTrace(r.round_number, "system", f"Agreement reached at {r.deal_price_paise} paise.")
+                    NegotiationTrace(r.round_number, "system", f"Agreement reached at {format_rupees(r.deal_price_paise)}.")
                 )
             elif r.stalemate:
                 trace.append(
@@ -430,9 +431,11 @@ class BuyerAgent:
     @staticmethod
     def _fallback_phrase(speaker: str, own_offer: int) -> str:
         # Used when no llm_client is configured, or the real LLM call fails --
-        # deliberately phrased in rupees (never paise) since this text can
-        # surface directly as a chat message, not just an internal log line.
-        amount = f"₹{own_offer / 100:,.2f}"
+        # deliberately phrased in rupees (never paise) via the same
+        # _format_rupees every other user-facing trace message uses, since
+        # this text can surface directly as a chat message, not just an
+        # internal log line.
+        amount = format_rupees(own_offer)
         if speaker == "buyer":
             return f"I can offer {amount} for this."
         return f"I can offer this to you for {amount}."

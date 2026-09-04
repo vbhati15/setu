@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.app.config import Settings
+from backend.app.formatting import format_rupees
 from backend.app.trust.identity import CredentialIssuer, SignedRequest, verify_signature
 from backend.app.trust.daily_spend import DailySpendTracker
 from backend.app.trust.idempotency import IdempotencyStore
@@ -216,8 +217,8 @@ class TrustGuard:
         credential = request.credential
         if price_paise > credential.max_spend_paise:
             return False, (
-                f"requested amount {price_paise} paise exceeds this agent's credential "
-                f"scope (max_spend_paise={credential.max_spend_paise})"
+                f"requested amount {format_rupees(price_paise)} exceeds this agent's credential "
+                f"scope (max_spend_paise={format_rupees(credential.max_spend_paise)})"
             )
         if category not in credential.allowed_categories:
             return False, (

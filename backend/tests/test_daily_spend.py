@@ -1,3 +1,4 @@
+from backend.app.formatting import format_rupees
 from backend.app.trust.daily_spend import DailySpendTracker
 
 
@@ -15,7 +16,11 @@ def test_recorded_spend_accumulates_toward_cap():
     ok, reason = tracker.check("agent-1", 1001, cap_paise=5000, now=now + 20)
     assert not ok
     assert "agent-1" in reason
-    assert "5000" in reason
+    # The reason must be in rupees, not raw paise -- this exact assertion
+    # used to check for a bare "5000" (the cap in *paise*), which is the
+    # precise bug this whole formatting utility exists to prevent.
+    assert format_rupees(5000) in reason
+    assert "5000" not in reason
 
 
 def test_purchase_that_fits_exactly_at_cap_is_allowed():
