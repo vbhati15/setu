@@ -39,6 +39,22 @@ Most "AI negotiates for you" demos are smoke and mirrors: an LLM freestyles a nu
 | How "safe" is proven | Take our word for it | 8 trust checks, fired live against production, with the request/response evidence to show for it |
 | How a completed deal is proven | A database row you have to trust us about | A signed certificate you can verify **offline**, with no call back to our server |
 
+## How the negotiation actually works
+
+The core idea: **the Buyer Agent and Merchant Agent both have a "risk of no deal" number every round, and whoever has less to lose by giving in is the one who does.** This is Zeuthen's monotonic concession protocol — decades-old game theory, not something an LLM improvises.
+
+Here's the walkthrough, using the exact negotiation shown above (Mechanical Keyboard, list price ₹3,499, your budget ₹3,099):
+
+1. **Each side has a utility curve.** The buyer is happiest at ₹0 and unwilling to go past their budget. The merchant is happiest at list price and won't sell below its own floor (a configured fraction of list price). Neither number is ever revealed to the other side directly — only offers are exchanged.
+2. **Each round, both sides ask: "what would caving to the other's offer *right now* cost me?"** That's the risk score — close to 1 if you have a lot to lose by backing down, close to 0 if you don't. Whoever has the *lower* risk concedes that round, since they're the one with less to protect.
+3. **The concession size isn't arbitrary — it scales with how stubborn the other side is being.** A more stubborn opponent (higher risk) gets met with a bigger step. This is why the two lines in the risk chart above visibly converge instead of moving in fixed increments.
+4. **It stops the moment the gap is small enough to not matter** (1% of list price) — not when the offers land on the exact same paisa, and not by grinding through every round of a fixed cap. In the run above, that took 11 real rounds and landed at ₹2,859.16.
+5. **If both sides get pinned at their own walk-away price with a real gap still open, it ends in a stalemate rather than a fake "deal."** No pressure to force a bad number just to close.
+
+The LLM's only involvement is step 6, which doesn't exist in the math above: turning "buyer offers 2841.73, risk 0.16" into the sentence *"I can offer ₹2,841.73 for this."* for the chat log. If that call fails or times out, a plain templated sentence fills in instead — the negotiation itself never notices or cares.
+
+Full math (utility functions, the exact risk formula, convergence/stalemate conditions): [`docs/BARGAINING.md`](docs/BARGAINING.md).
+
 ## See it live
 
 <p align="center">

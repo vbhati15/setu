@@ -101,53 +101,61 @@ The sections below go one level deeper — the actual function-call sequence, th
 
 ## Component diagram
 
-```
-BuyerAgent.negotiate_and_purchase(goal, budget)
-  |
-  +--> _find_candidate_product()            [deterministic keyword match]
-  +--> MerchantAgent.handle_request()       [get list price + any upsell]
-  |
-  +-- budget >= list price? --------------- yes --> pay list price, maybe upsell
-  |
-  +-- no --> MerchantAgent.negotiation_party()
-              |
-              v
-        run_zeuthen_negotiation(BuyerParty, MerchantParty)  [deterministic]
-              |
-              v
-        deal / stalemate / max_rounds_exceeded
-              |
-        (LLM phrases each round for the trace -- flavor only)
-              |
-        deal --> FakeRazorpayClient.pay_order() --> MerchantAgent.handle_request(
-                    agreed_price_paise=deal_price)  [verifies against agreed price]
+The actual function-call sequence behind one `negotiate_and_purchase(goal, budget)` call — including both ways a deal turns into a real payment (`auto_pay=true` for the scenario harness, `auto_pay=false` for a human at the dashboard):
+
+```mermaid
+flowchart TD
+    Start(["BuyerAgent.negotiate_and_purchase(goal, budget)"]) --> Match{"product_id given?"}
+    Match -->|"yes"| Direct["catalog.get(product_id)"]
+    Match -->|"no"| Keyword["_find_candidate_product()<br/>deterministic keyword match"]
+    Direct --> Quote["MerchantAgent.handle_request()<br/>get list price + any upsell"]
+    Keyword --> Quote
+
+    Quote --> Afford{"budget ≥ list price?"}
+    Afford -->|"yes"| Accept["Accept list price outright<br/>+ maybe upsell"]
+    Afford -->|"no"| Zeuthen["run_zeuthen_negotiation()<br/>deterministic, see BARGAINING.md"]
+
+    Zeuthen --> Outcome{"deal reached?"}
+    Outcome -->|"no"| Fail(["No deal — stalemate or<br/>max rounds. Nothing charged."])
+    Outcome -->|"yes"| Phrase["LLM phrases each round<br/>for the trace — flavor only"]
+
+    Accept --> PayMode{"auto_pay?"}
+    Phrase --> PayMode
+
+    PayMode -->|"true — scenario harness"| Pay["FakeRazorpayClient.pay_order()<br/>MerchantAgent.handle_request(agreed_price_paise=...)"]
+    PayMode -->|"false — a human,<br/>at the dashboard"| Token["Return a signed checkout_token<br/>(product_id + agreed price locked)"]
+
+    Token --> Checkout["Real Razorpay Checkout<br/>POST /checkout/order → POST /checkout/confirm"]
+    Checkout --> Cert["Signed transaction certificate issued"]
 ```
 
 ## Data flow (today)
 
-```
-client --GET /products/{id}--> Merchant Agent --check--> Catalog
-                                     |
-                                     v (unpaid)
-                              402 + PaymentRequirements (+ optional upsell)
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Merchant as Merchant Agent
+    participant Catalog
+    participant Razorpay
 
-client --GET /products/{id} + X-PAYMENT--> Merchant Agent --verify--> Razorpay
-                                     |
-                                     v (verified)
-                              200 + resource + X-PAYMENT-RESPONSE
+    Client->>Merchant: GET /products/{id}
+    Merchant->>Catalog: look up product
+    Merchant-->>Client: 402 Payment Required<br/>+ PaymentRequirements (+ optional upsell)
+
+    Client->>Merchant: GET /products/{id}<br/>+ X-PAYMENT header
+    Merchant->>Razorpay: verify payment
+    Razorpay-->>Merchant: verified
+    Merchant-->>Client: 200 + resource<br/>+ X-PAYMENT-RESPONSE
 ```
 
 ## Deployment topology
 
-```
-Browser --> Vercel (frontend, static + client fetch)
-                |
-                v  fetch(<VITE_API_URL> + /health | /catalog | /negotiate
-                |         | /admin/kill-switch[/activate|/deactivate])
-            Render (backend, FastAPI/uvicorn)
-                |
-                v
-            Razorpay test-mode API + Gemini API
+```mermaid
+flowchart LR
+    Browser["Browser"] -->|"static assets +<br/>client-side fetch"| Vercel["Vercel<br/>frontend (React)"]
+    Vercel -->|"fetch VITE_API_URL +<br/>/health · /catalog · /negotiate ·<br/>/checkout/* · /admin/kill-switch/*"| Render["Render<br/>backend (FastAPI / uvicorn)"]
+    Render --> Razorpay[("Razorpay<br/>test-mode API")]
+    Render --> Gemini[("Gemini API")]
 ```
 
 CORS on the backend (`backend/app/config.py: cors_allowed_origins`) allows
