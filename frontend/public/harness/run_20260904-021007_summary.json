@@ -1,0 +1,18 @@
+{
+  "run_id": "20260904-021007",
+  "base_url": "https://setu-59l6.onrender.com",
+  "total_named_scenarios": 22,
+  "total_http_calls": 37,
+  "outcomes": {
+    "compliant": 12,
+    "escalated": 13,
+    "graceful_no_match": 4,
+    "rejected": 1,
+    "failed_verification": 7
+  },
+  "rules_fired": {
+    "daily_spend": 13,
+    "credential_scope": 1
+  },
+  "log_file": "C:\\Users\\vshnv\\Desktop\\setu\\backend\\app\\scripts\\harness_results\\run_20260904-021007.jsonl"
+}

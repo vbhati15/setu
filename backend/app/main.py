@@ -153,7 +153,16 @@ def _outcome_to_dict(outcome) -> dict:
         "upsell_product": outcome.upsell_product.id if outcome.upsell_product else None,
         "rounds": len(outcome.rounds),
         "trace": [
-            {"round": t.round_number, "speaker": t.speaker, "message": t.message} for t in outcome.trace
+            {
+                "round": t.round_number,
+                "speaker": t.speaker,
+                "message": t.message,
+                "buyer_offer_paise": t.buyer_offer_paise,
+                "merchant_offer_paise": t.merchant_offer_paise,
+                "buyer_risk": t.buyer_risk,
+                "merchant_risk": t.merchant_risk,
+            }
+            for t in outcome.trace
         ],
     }
 

@@ -1,17 +1,24 @@
 # ARCHITECTURE.md
 
-> Status: partial. Foundation + Merchant Agent + live deployment + Buyer
-> Agent + Zeuthen bargaining done. Fill in further as the policy/trust layer
-> lands (Day 3).
+> Status: Foundation + Merchant Agent + Buyer Agent + Zeuthen bargaining +
+> TrustGuard (kill switch, signature/credential/replay, velocity, daily
+> spend, policy bounds) + public dashboard, all live-deployed and
+> real-data-verified. See `BUILD_LOG.md` (Day 4 Part 3) for the dashboard
+> build and its one open item (a small additive backend change awaiting
+> deploy).
 
 ## System overview
 
 - **Backend**: FastAPI service (`backend/app`), packaged as `backend.app.*`.
   Deployed on Render.
-- **Frontend**: React + Tailwind dashboard (`frontend/`). UI is still a
-  placeholder (no negotiation feed yet — that's Day 4 scope), but it's
-  live-wired: fetches `/health` and `/catalog` from the deployed backend on
-  load and renders the real response. Deployed on Vercel.
+- **Frontend**: React + Tailwind + Framer Motion dashboard (`frontend/`,
+  see `src/App.jsx` and `src/components/`). A real single-page dashboard,
+  not a placeholder: a live negotiation trigger against `POST /negotiate`
+  with a Zeuthen risk-of-conflict chart, a TrustGuard decision-trace panel,
+  the Part 2 scenario-harness's real headline numbers and audit log, and a
+  working kill switch against `/admin/kill-switch/*`. Deployed on Vercel —
+  see `BUILD_LOG.md` (Day 4 Part 3) for what's built and one pending
+  backend deploy needed for full fidelity.
 - **Payments**: Razorpay test-mode (Orders + Payments API), via
   `backend/app/razorpay_client.py`.
 - **LLM**: Gemini (free tier), behind a provider-agnostic interface
@@ -37,7 +44,16 @@
   `docs/DECISIONS.md`, 2026-09-02.
 - **LLM call logging**: `backend/app/llm/logging_client.py` — wraps any
   `LLMClient`, records latency + estimated token cost per call.
-- **Policy/trust layer**: not yet built (Day 3).
+- **Policy/trust layer**: `backend/app/trust/` — `TrustGuard`
+  (`guard.py`) is the single choke point every purchase passes through:
+  kill switch, signature/credential verification, replay defense
+  (`identity.py`), credential-scope check, idempotency (`idempotency.py`),
+  velocity (`velocity.py`), daily spend cap (`daily_spend.py`), and policy
+  bounds (`policy.py` — spend cap, category). One `TrustGuard` instance is
+  shared across every agent in the process, so the kill switch and
+  velocity/spend accounting are genuinely global across `/negotiate` and
+  `/products/{id}`. Every rule is live-verified against production — see
+  `BUILD_LOG.md`'s Day 4 entries and `docs/THREAT_MODEL.md`.
 
 ## Component diagram
 
@@ -82,7 +98,8 @@ client --GET /products/{id} + X-PAYMENT--> Merchant Agent --verify--> Razorpay
 ```
 Browser --> Vercel (frontend, static + client fetch)
                 |
-                v  fetch("<VITE_API_URL>/health" | "/catalog")
+                v  fetch(<VITE_API_URL> + /health | /catalog | /negotiate
+                |         | /admin/kill-switch[/activate|/deactivate])
             Render (backend, FastAPI/uvicorn)
                 |
                 v

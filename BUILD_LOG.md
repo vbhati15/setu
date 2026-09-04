@@ -1,5 +1,96 @@
 # BUILD_LOG.md
 
+## 2026-09-04 — Day 4 Part 3: public dashboard, built against real data only
+
+**Requested**: a single-page public dashboard proving the system live —
+visible Zeuthen risk-of-conflict math per negotiation round, a real
+"run a live negotiation" trigger, a TrustGuard decision-trace panel, the
+Part 2 harness's real headline numbers, a working kill switch, and an
+audit log — with every number traceable to a real request/response or the
+harness's own JSONL, nothing illustrative.
+
+**Built** (`frontend/src/`, new `components/`, `lib/`, `public/harness/`):
+
+- **Hero** — headline, backend-health badge, floating stat badges sourced
+  from the real harness summary, a pulsing amber glow behind the wordmark.
+- **Live negotiation feed** (`LiveFeed.jsx`) — a "Run a live negotiation"
+  button fires a real `POST /negotiate` against a curated set of
+  real-catalog tight-budget scenarios (never a freeform budget, to bound
+  live Gemini spend), with a 60s cooldown measured from *completion* (not
+  click) since a full negotiation can itself take close to a minute.
+  Renders each round as `Risk(Buyer)=X.XX vs Risk(Merchant)=X.XX →
+  {side} concedes ₹Y`, computed from the real per-round offer numbers, plus
+  a hand-rolled SVG chart of both parties' risk curves converging to the
+  deal. Falls back to the last verified harness run when no live run has
+  been triggered yet.
+- **Decision trace** (`DecisionTrace.jsx` + `lib/rules.js`) — reconstructs
+  TrustGuard's rule-evaluation checklist from the response's own `reason`
+  text and `backend/app/trust/guard.py`'s fixed, sequential, short-circuit
+  check order (kill switch → signature → replay → credential scope →
+  velocity → daily spend → spend cap → category): every check rendered
+  "passed" is one the code guarantees ran before the named rule fired, and
+  the failing step's text is the exact backend reason string, not
+  paraphrased.
+- **Harness results** (`StatsHeadline.jsx` + `charts/OutcomeDonut.jsx`) —
+  the real Part 2 run's numbers (12 compliant / 13 escalated / 1 rejected /
+  4 graceful-no-match / 7 verification-failed of 37 total calls), a
+  count-up on scroll-into-view, an animated donut, and the real
+  blocked-by-rule breakdown (13× daily_spend, 1× credential_scope).
+- **Kill switch** (`KillSwitch.jsx`) — calls the real
+  `/admin/kill-switch/*` endpoints with a user-entered `X-ADMIN-KEY`;
+  confirm-to-activate; polls status every 15s.
+- **Audit log** (`AuditLog.jsx`) — the Part 2 harness's own
+  `run_20260904-021007.jsonl`, copied verbatim into
+  `frontend/public/harness/` and fetched at runtime, filterable by outcome.
+- **Layout**: full-viewport scroll-snap sections (one section visible at a
+  time, `scroll-snap-stop: always` so a fast scroll can't skip one), a
+  fixed dot-nav tracking scroll position via `IntersectionObserver`.
+- New deps: `framer-motion`, `lucide-react` (added to
+  `frontend/package.json`, not yet committed — see below).
+
+**Backend change — additive, NOT committed**: `backend/app/main.py`'s
+`_outcome_to_dict` was silently dropping `buyer_offer_paise` /
+`merchant_offer_paise` / `buyer_risk` / `merchant_risk` from each
+`/negotiate` trace entry, even though `BuyerAgent` already computes and
+attaches them (`NegotiationTrace` has always carried these fields — see
+`backend/app/buyer_agent/agent.py`). Added them to the response dict; all
+122 backend tests still pass unmodified. Left uncommitted per explicit
+instruction this session ("don't commit anything") — **the live Render
+backend does not have this fix yet**, so a freshly-triggered negotiation
+against production will render messages-only (no risk chart, with a
+visible "predates risk-telemetry" note); the dashboard was verified
+end-to-end against a local `uvicorn` instance running this change instead.
+**Action needed before the risk chart works against production**: review
+and deploy this `main.py` change.
+
+**Verified**:
+
+- `pytest backend/tests -v` → 122/122 passing, with the additive trace
+  fields in place.
+- Live-trigger button verified against a local backend: a real
+  multi-round negotiation, captured via headless browser, produced the
+  intended `Risk(Buyer)=1.00 vs Risk(Merchant)=1.00 → opening positions`
+  → ... → converged risk curve, ending in a real `pay_fake_*` transaction.
+- Kill switch verified through the *actual rendered buttons* (not curl):
+  clicked Activate, confirmed the UI showed `ACTIVE`, independently
+  `fetch()`'d `/negotiate` and got `"kill switch is active"` back, clicked
+  Deactivate, confirmed `/negotiate` resumed succeeding. Never touched the
+  production Render kill switch during this testing.
+- `npm run build` clean throughout; no console/page errors across repeated
+  headless-browser passes.
+
+**Known gaps carried forward**:
+
+- The `main.py` trace-enrichment change above is uncommitted and
+  undeployed — full risk-chart fidelity against the public Render URL
+  requires deploying it first.
+- No automated test for the dashboard itself (React component tests or
+  Playwright) — verification this session was manual, via headless browser
+  screenshots and DOM assertions, not committed as a repeatable test suite.
+- `frontend/package.json`'s new dependencies (`framer-motion`,
+  `lucide-react`) are uncommitted — a fresh `npm install` on another
+  machine or CI won't have them until this is committed.
+
 ## 2026-09-04 — Day 4 Part 2: scenario test harness, closing idempotency's live-verification gap
 
 **Requested**: build a scenario test harness that runs real, randomized

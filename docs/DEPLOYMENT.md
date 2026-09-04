@@ -12,6 +12,23 @@ Verified end-to-end: the deployed frontend's built bundle points at the
 Render backend URL above, and loading the live site renders real data
 fetched from it (`GET /health` + `GET /catalog`) — not a static page.
 
+### Pending before the next deploy (as of 2026-09-04, Day 4 Part 3)
+
+Neither of these is deployed yet — both were left uncommitted this session
+on explicit instruction, so the live URLs above still run the pre-dashboard
+build:
+
+- **`backend/app/main.py`**: an additive, backward-compatible change so
+  `/negotiate`'s response includes each round's real
+  `buyer_offer_paise`/`merchant_offer_paise`/`buyer_risk`/`merchant_risk`
+  (see `docs/DECISIONS.md`, 2026-09-04). Without this deployed, the
+  dashboard's live-triggered negotiations render messages-only (no risk
+  chart) against production.
+- **`frontend/`**: the public dashboard itself (`src/App.jsx`,
+  `src/components/`, `src/lib/`, `public/harness/`), plus two new
+  dependencies in `package.json` (`framer-motion`, `lucide-react`) that a
+  fresh `npm install` needs.
+
 ### Environment variables set on the hosts (not committed)
 
 - **Render (backend)**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`,

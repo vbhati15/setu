@@ -12,14 +12,18 @@ Live demo: [https://setu-alpha-beige.vercel.app](https://setu-alpha-beige.vercel
 
 ## Status
 
-Day 2 of a compressed build: repo foundation, config system, Razorpay
-test-mode payments, a working Merchant Agent that speaks x402, and a Buyer
-Agent that negotiates price against it using a real Zeuthen bargaining
-strategy (see `docs/BARGAINING.md`), tested unattended against a fake
-Razorpay client. Policy/trust layer (spend limits actually enforced, replay
-protection, human-approval gate) is next — see `BUILD_LOG.md` for the
-day-by-day log and `docs/DECISIONS.md` for why things were built the way
-they were.
+Day 4 of a compressed build: repo foundation, Razorpay test-mode payments,
+a Merchant Agent and Buyer Agent that negotiate price via a real Zeuthen
+bargaining strategy (see `docs/BARGAINING.md`), a full trust layer
+(`TrustGuard` — kill switch, signature/replay defense, credential scope,
+idempotency, velocity, daily spend cap, policy bounds) live-verified
+against production, a scenario test harness with real HTTP evidence, and a
+public single-page dashboard (live negotiation trigger with a Zeuthen
+risk-of-conflict chart, a TrustGuard decision-trace panel, real harness
+numbers, and a working kill switch). See `BUILD_LOG.md` for the day-by-day
+log — the dashboard's one open item is a small additive backend change
+awaiting deploy (Day 4 Part 3) — and `docs/DECISIONS.md` for why things
+were built the way they were.
 
 ## Quickstart
 

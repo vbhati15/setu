@@ -1,57 +1,86 @@
 import { useEffect, useState } from "react";
-import { getCatalog, getHealth } from "./api";
+import { getHealth } from "./api";
+import { loadHarnessSummary, loadHarnessRecords } from "./lib/harness";
+import Hero from "./components/Hero";
+import StatsHeadline from "./components/StatsHeadline";
+import LiveFeed from "./components/LiveFeed";
+import DecisionTrace from "./components/DecisionTrace";
+import KillSwitch from "./components/KillSwitch";
+import AuditLog from "./components/AuditLog";
+import SectionNav from "./components/SectionNav";
+import { API_BASE_URL } from "./api";
+
+function pickDecisionExamples(records) {
+  const byId = (id, step = 1) => records.find((r) => r.scenario_id === id && r.step === step);
+  const firstWithRule = (rule) => records.find((r) => r.rule === rule);
+
+  const picks = [
+    { rec: byId("comfortable-1"), label: "approved · comfortable budget" },
+    { rec: firstWithRule("daily_spend"), label: "escalated · daily spend cap" },
+    { rec: byId("limit-credential-scope-1"), label: "rejected · credential scope" },
+    { rec: byId("comfortable-4"), label: "approved · with upsell" },
+  ].filter((p) => p.rec);
+
+  return picks.map((p) => ({ ...p.rec, label: p.label }));
+}
 
 export default function App() {
-  const [status, setStatus] = useState("loading"); // "loading" | "ok" | "error"
-  const [health, setHealth] = useState(null);
-  const [catalogCount, setCatalogCount] = useState(null);
-  const [error, setError] = useState(null);
+  const [backendStatus, setBackendStatus] = useState("loading");
+  const [summary, setSummary] = useState(null);
+  const [records, setRecords] = useState([]);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
-    let cancelled = false;
+    getHealth()
+      .then(() => setBackendStatus("ok"))
+      .catch(() => setBackendStatus("error"));
 
-    Promise.all([getHealth(), getCatalog()])
-      .then(([healthData, catalogData]) => {
-        if (cancelled) return;
-        setHealth(healthData);
-        setCatalogCount(catalogData.length);
-        setStatus("ok");
+    Promise.all([loadHarnessSummary(), loadHarnessRecords()])
+      .then(([s, r]) => {
+        setSummary(s);
+        setRecords(r);
       })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err.message);
-        setStatus("error");
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .catch((e) => setLoadError(e.message));
   }, []);
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center px-6">
-      <div className="max-w-xl text-center space-y-4">
-        <h1 className="text-4xl font-bold tracking-tight">Setu</h1>
-        <p className="text-slate-400">
-          Agent-to-Agent Commerce Gateway — dashboard placeholder. Negotiation
-          traces, transaction history, and policy controls land here as the
-          Buyer Agent and bargaining layer come online.
-        </p>
+  const decisionExamples = records.length ? pickDecisionExamples(records) : [];
+  const fallbackHarnessRecord = records.find(
+    (r) => r.category === "tight_budget" && r.response_body?.rounds >= 5
+  );
+  const fallbackFeedRecord = fallbackHarnessRecord && {
+    body: fallbackHarnessRecord.response_body,
+    scenario_id: fallbackHarnessRecord.scenario_id,
+  };
 
-        <div className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 text-sm">
-          {status === "loading" && (
-            <span className="text-slate-400">Checking backend…</span>
-          )}
-          {status === "ok" && (
-            <span className="text-emerald-400">
-              Backend live — status: {health.status}, env: {health.env}, catalog: {catalogCount} products
-            </span>
-          )}
-          {status === "error" && (
-            <span className="text-red-400">Backend unreachable — {error}</span>
-          )}
-        </div>
-      </div>
+  const navSections = [
+    { id: "hero", label: "Setu" },
+    { id: "live-feed", label: "Live feed" },
+    ...(decisionExamples.length > 0 ? [{ id: "decision-trace", label: "Decision trace" }] : []),
+    { id: "stats", label: "Harness results" },
+    { id: "kill-switch", label: "Kill switch" },
+    ...(records.length > 0 ? [{ id: "audit-log", label: "Audit log" }] : []),
+  ];
+
+  return (
+    <div className="bg-ink-950 text-parchment-100 font-sans selection:bg-gold-500/30">
+      <SectionNav sections={navSections} />
+      <Hero apiBaseUrl={API_BASE_URL} backendStatus={backendStatus} summary={summary} />
+      <LiveFeed fallbackRecord={fallbackFeedRecord} />
+      {decisionExamples.length > 0 && <DecisionTrace examples={decisionExamples} />}
+      <StatsHeadline summary={summary} />
+      <KillSwitch />
+      {records.length > 0 && <AuditLog records={records} />}
+
+      <section className="snap-panel flex flex-col items-center justify-center px-6 border-t border-ink-700">
+        {loadError && (
+          <div className="mb-6 max-w-md text-center text-sm font-mono text-red-400">
+            couldn't load harness data: {loadError}
+          </div>
+        )}
+        <footer className="text-center text-xs font-mono text-parchment-500">
+          Setu — every number on this page traces back to a real request/response or a real harness run.
+        </footer>
+      </section>
     </div>
   );
 }

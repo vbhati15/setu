@@ -1,3 +1,22 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+  scroll-snap-type: y mandatory;
+}
+
+body {
+  background-color: #0a0908;
+}
+
+/* Each top-level section is a full-viewport "page" that snaps into place --
+   see .snap-panel usage in the section components. min-height (not a fixed
+   height) so a section taller than the viewport still scrolls internally
+   through normal document flow rather than clipping content. */
+.snap-panel {
+  min-height: 100vh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}

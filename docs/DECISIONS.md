@@ -2,6 +2,46 @@
 
 Running log of non-obvious decisions and why they were made. Newest first.
 
+## 2026-09-04 — Dashboard's decision-trace panel reconstructs the rule checklist client-side rather than having the backend return it
+
+`GET /negotiate`'s response only ever names the *one* rule that failed (or
+that a purchase succeeded) — it never returns "here's every check that ran
+and passed before that." Rather than adding a new backend field to carry a
+full per-check trace, the dashboard reconstructs it in
+`frontend/src/lib/rules.js` from two things that are already true by
+construction: `backend/app/trust/guard.py`'s `authorize_purchase` runs its
+checks in one fixed, hardcoded, sequential order and returns (short-
+circuits) at the first failure — so if the API says rule `daily_spend`
+failed, every check earlier in that fixed order (kill switch, signature,
+replay, credential scope, velocity) is *mechanically guaranteed* to have
+passed. The checklist UI renders exactly that guarantee, and only ever
+shows a step as failed when it's literally naming the rule the backend
+itself returned, with the backend's own reason text verbatim — nothing
+inferred or fabricated, just made visible. Trade-off: if `guard.py`'s check
+order ever changes, `SIGNED_PIPELINE` in `rules.js` has to change with it
+by hand — there's no shared source of truth between the two. Accepted for
+now given the order is unlikely to change casually (see the module
+docstring in `guard.py`, which itself documents the order as load-bearing).
+
+## 2026-09-04 — `/negotiate`'s per-round Zeuthen risk numbers exist server-side but weren't exposed, and adding them was left uncommitted this session
+
+`backend/app/buyer_agent/agent.py`'s `NegotiationTrace` dataclass has
+always carried `buyer_offer_paise` / `merchant_offer_paise` / `buyer_risk`
+/ `merchant_risk` per round — but `main.py`'s `_outcome_to_dict` dropped
+them before they ever reached an HTTP response, so no caller (dashboard,
+harness, or otherwise) could ever have shown the real risk-of-conflict math
+driving a negotiation, only the LLM-phrased sentence. Fixing this (Day 4
+Part 3, for the dashboard's live negotiation feed) is a purely additive,
+backward-compatible response-shape change — confirmed via the full test
+suite (122/122 still passing) — but was deliberately left uncommitted, on
+explicit instruction not to commit anything that session. Net effect: the
+fix exists locally and was verified end-to-end against a local backend
+instance, but the live Render deployment does not have it yet, so the
+dashboard's risk chart only renders for negotiations run against a backend
+that has this change deployed. See `BUILD_LOG.md` (Day 4 Part 3) for the
+exact diff and verification evidence, and deploy `backend/app/main.py`
+before relying on this for a production demo.
+
 ## 2026-09-03 — Gemini model bumped from `gemini-2.0-flash` to `gemini-flash-lite-latest`
 
 Day 1's configured model (`gemini-2.0-flash`) started 404ing with
