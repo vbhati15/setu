@@ -1,7 +1,14 @@
 # DEPLOYMENT.md
 
-> Status: live. Backend on Render, frontend on Vercel, both reachable and
-> talking to each other in production as of 2026-09-03.
+> Status: live and current. Backend on Render, frontend on Vercel, both
+> reachable, talking to each other, and running this repo's `main` branch
+> as of 2026-09-05 (Day 6) — confirmed live, not assumed: a direct
+> `curl POST /negotiate` against production with `auto_pay:false` returned
+> a real `checkout_token`, proving the Day 5/6 checkout + certificate work
+> is actually deployed, not just committed. See `BUILD_LOG.md` for the full
+> day-by-day history; the sections below that used to track "pending, not
+> yet deployed" work have been retired now that everything through Day 6
+> is confirmed live.
 
 ## Live deployment
 
@@ -12,60 +19,12 @@ Verified end-to-end: the deployed frontend's built bundle points at the
 Render backend URL above, and loading the live site renders real data
 fetched from it (`GET /health` + `GET /catalog`) — not a static page.
 
-### Pending before the next deploy (as of 2026-09-04, Day 4 Part 3)
-
-Neither of these is deployed yet — both were left uncommitted this session
-on explicit instruction, so the live URLs above still run the pre-dashboard
-build:
-
-- **`backend/app/main.py`**: an additive, backward-compatible change so
-  `/negotiate`'s response includes each round's real
-  `buyer_offer_paise`/`merchant_offer_paise`/`buyer_risk`/`merchant_risk`
-  (see `docs/DECISIONS.md`, 2026-09-04). Without this deployed, the
-  dashboard's live-triggered negotiations render messages-only (no risk
-  chart) against production.
-- **`frontend/`**: the public dashboard itself (`src/App.jsx`,
-  `src/components/`, `src/lib/`, `public/harness/`), plus two new
-  dependencies in `package.json` (`framer-motion`, `lucide-react`) that a
-  fresh `npm install` needs.
-
-### Also pending (Day 4 Part 4, later the same day) — not committed
-
-On top of the above, uncommitted at end of this session:
-
-- **`backend/app/buyer_agent/agent.py` / `main.py`**: `NegotiationTrace`
-  now carries a real `latency_ms` per message (measured around the actual
-  LLM call), exposed through `/negotiate`'s `trace[]` — used by the
-  dashboard's chat-style negotiation replay to pace its typing indicator.
-  Without this deployed, a live-triggered negotiation against production
-  falls back to a fixed default typing delay per message instead of the
-  real one.
-- **`frontend/`**: `Header.jsx`, `HowItWorks.jsx`, `NegotiationChat.jsx`,
-  `ScrollProgress.jsx`, `SectionReveal.jsx` (new components), plus the
-  interactive "try it yourself" form in `LiveFeed.jsx`, the hero/nav
-  rework, the `KillSwitch` relocation in `App.jsx`, and the copy cleanup
-  described in `BUILD_LOG.md` (Day 4 Part 4). No new dependencies beyond
-  the ones already listed above.
-
-### Also pending (Day 4 Part 5, later the same day) — not committed
-
-On top of the above, uncommitted at end of this session:
-
-- **`backend/app/main.py` / `backend/app/buyer_agent/agent.py`**: `/negotiate`
-  now accepts an optional `product_id` field that pins negotiation to an
-  exact catalog product, bypassing keyword matching — fixes the
-  product-mismatch bug described in `docs/DECISIONS.md` (2026-09-04, "Product-mismatch
-  bug: routed around via `product_id`, not fixed at the root"). Without
-  this deployed, the dashboard's "try it yourself" picker can still
-  silently substitute a different product than the one selected when the
-  budget is below the picked product's list price.
-- **`frontend/`**: full visual redesign — new `ProofTabs.jsx`,
-  `AgentConnectionBackdrop.jsx`, `NegotiationTicker.jsx`, `ShutterIntro.jsx`,
-  `lib/proofNav.js`; the gold/parchment/ink theme replaced with a
-  black/crimson theme (`tailwind.config.js`); `LiveFeed.jsx` no longer
-  auto-shows a fallback negotiation on load and sends `product_id` from the
-  product picker; `Header.jsx` currently has no content (iterated through
-  several ideas this session, emptied on request). No new npm dependencies.
+**Before shipping any future change**: re-run the same live check this
+status line relies on — push to `main`, then `curl` a real endpoint (not
+just `/health`) and confirm the response shape matches what the new code
+actually sends. A clean `git push` is not proof of a live deploy; Render
+has silently lagged behind `main` before (see the Day 4 history below) —
+only a real response from the live URL is proof.
 
 ### Environment variables set on the hosts (not committed)
 

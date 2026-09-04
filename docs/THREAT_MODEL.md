@@ -413,6 +413,19 @@ all — any alteration to any field (price, product, transaction id) breaks
 Ed25519 signature verification. It does **not** prove the signing key
 belongs to a trustworthy Setu instance on its own (no CA chain) — the same
 self-signed-certificate caveat that already applies to `AgentCredential`.
+See `backend/tests/test_certificate.py` for tamper-detection and
+wrong-key-forgery tests run against the real standalone verifier (not a
+reimplementation of its logic).
+
+**Why reusing the credential-issuer key for a second, differently-shaped
+message is safe**: `AgentCredential.signing_payload()` and a certificate's
+payload (`certificate.py`) sign completely disjoint field sets (`agent_id`/
+`max_spend_paise`/`allowed_categories`/... vs. `certificate_version`/
+`transaction_id`/`agreed_price_paise`/...). Ed25519 signs the exact
+canonical bytes of whatever payload it's given, so a signature valid for
+one message shape can never be replayed as valid for the other — there's no
+cross-message confusion to exploit, even though both are signed with the
+same keypair.
 
 **Live-verified 2026-09-05, not just a code-path demo**: a real human
 completed a real Razorpay Checkout, downloaded the actual certificate file
