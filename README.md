@@ -67,6 +67,7 @@ Full math → [`docs/BARGAINING.md`](docs/BARGAINING.md)
 - Watch your own Buyer Agent negotiate against Setu's Merchant Agent, live.
 - A two-party chat, paced by real LLM latency, plus a live risk-of-conflict chart.
 - Once a deal closes: a real Razorpay Checkout, which you complete yourself.
+  - **Test-mode card:** `4111 1111 1111 1111` · any future expiry · any 3-digit CVV · OTP `1234` ([Razorpay's public test credentials](https://razorpay.com/docs/payments/payments/test-card-upi-details/)) — no real money moves.
 
 <p align="center">
   <img src="docs/screenshots/negotiation-1.png" alt="The negotiation replayed as a two-party chat, ending in a closed deal" width="820">
