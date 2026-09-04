@@ -21,6 +21,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import time
 import uuid
 from dataclasses import dataclass, field
 
@@ -47,6 +48,11 @@ class NegotiationTrace:
     merchant_offer_paise: int | None = None
     buyer_risk: float | None = None
     merchant_risk: float | None = None
+    # Wall-clock time the phrasing LLM call for THIS message actually took,
+    # measured around the real `generate_text` call in `_phrase`. None when
+    # no LLM call happened for this line (no llm_client configured) --
+    # never a guessed/fabricated number.
+    latency_ms: float | None = None
 
 
 @dataclass
@@ -235,7 +241,7 @@ class BuyerAgent:
 
     def _render_trace(self, product: Product, rounds: list[RoundResult], trace: list[NegotiationTrace]) -> None:
         for r in rounds:
-            buyer_msg = self._phrase(
+            buyer_msg, buyer_latency_ms = self._phrase(
                 speaker="buyer",
                 purpose="buyer_offer",
                 product_name=product.name,
@@ -250,9 +256,10 @@ class BuyerAgent:
                     r.round_number, "buyer", buyer_msg,
                     buyer_offer_paise=r.buyer_offer_paise, merchant_offer_paise=r.merchant_offer_paise,
                     buyer_risk=r.buyer_risk, merchant_risk=r.merchant_risk,
+                    latency_ms=buyer_latency_ms,
                 )
             )
-            merchant_msg = self._phrase(
+            merchant_msg, merchant_latency_ms = self._phrase(
                 speaker="merchant",
                 purpose="merchant_counter",
                 product_name=product.name,
@@ -267,6 +274,7 @@ class BuyerAgent:
                     r.round_number, "merchant", merchant_msg,
                     buyer_offer_paise=r.buyer_offer_paise, merchant_offer_paise=r.merchant_offer_paise,
                     buyer_risk=r.buyer_risk, merchant_risk=r.merchant_risk,
+                    latency_ms=merchant_latency_ms,
                 )
             )
             if r.deal:
@@ -281,9 +289,19 @@ class BuyerAgent:
                     )
                 )
 
-    def _phrase(self, *, speaker, purpose, product_name, own_offer, other_offer, risk, deal, stalemate) -> str:
+    @staticmethod
+    def _fallback_phrase(speaker: str, own_offer: int) -> str:
+        # Used when no llm_client is configured, or the real LLM call fails --
+        # deliberately phrased in rupees (never paise) since this text can
+        # surface directly as a chat message, not just an internal log line.
+        amount = f"₹{own_offer / 100:,.2f}"
+        if speaker == "buyer":
+            return f"I can offer {amount} for this."
+        return f"I can offer this to you for {amount}."
+
+    def _phrase(self, *, speaker, purpose, product_name, own_offer, other_offer, risk, deal, stalemate) -> tuple[str, float | None]:
         if self.llm_client is None:
-            return f"{speaker} offer: {own_offer} paise (risk={risk:.2f})"
+            return self._fallback_phrase(speaker, own_offer), None
         system_prompt = (
             f"You are the {speaker} in a price negotiation for '{product_name}'. "
             "Write ONE short, natural-language sentence stating your offer. "
@@ -294,16 +312,18 @@ class BuyerAgent:
             f"Your offer: {own_offer} paise. Other side's last offer: {other_offer} paise. "
             f"Your current risk of conflict: {risk:.2f} (0=safe to concede, 1=won't budge)."
         )
+        start = time.perf_counter()
         try:
-            return self.llm_client.generate_text(system_prompt, user_prompt, purpose=purpose)  # type: ignore[call-arg]
+            text = self.llm_client.generate_text(system_prompt, user_prompt, purpose=purpose)  # type: ignore[call-arg]
         except TypeError:
             # underlying LLMClient (not the logging wrapper) doesn't take `purpose`
             try:
-                return self.llm_client.generate_text(system_prompt, user_prompt)
+                text = self.llm_client.generate_text(system_prompt, user_prompt)
             except Exception:
-                return f"{speaker} offer: {own_offer} paise (risk={risk:.2f})"
+                return self._fallback_phrase(speaker, own_offer), round((time.perf_counter() - start) * 1000, 1)
         except Exception:
-            return f"{speaker} offer: {own_offer} paise (risk={risk:.2f})"
+            return self._fallback_phrase(speaker, own_offer), round((time.perf_counter() - start) * 1000, 1)
+        return text, round((time.perf_counter() - start) * 1000, 1)
 
     # -- payment ------------------------------------------------------------
 

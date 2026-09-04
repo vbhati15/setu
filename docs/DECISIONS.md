@@ -2,6 +2,83 @@
 
 Running log of non-obvious decisions and why they were made. Newest first.
 
+## 2026-09-04 — Per-message negotiation-replay latency is measured in `_phrase()` itself, not via `LoggingLLMClient`
+
+A `backend/app/llm/logging_client.py::LoggingLLMClient` wrapper already
+existed that records latency + estimated cost per LLM call — but it was
+never wired into `get_llm_client()` (`backend/app/llm/__init__.py` always
+returns a bare `GeminiClient`), so `/negotiate` had no real per-message
+timing to pace the dashboard's chat-replay typing indicator against.
+Rather than wiring the logging wrapper into the live DI path (a larger,
+riskier change touching cost-tracking semantics not otherwise needed),
+`BuyerAgent._phrase()` now measures its own call with `time.perf_counter()`
+and returns `(message, latency_ms)`, stored on `NegotiationTrace.latency_ms`
+and exposed through `_outcome_to_dict`. This measures around *the exact
+call site the trace text comes from*, including the exception-fallback
+path (a failed/rate-limited Gemini call still reports its real elapsed
+time, never `None` used as a stand-in for "fast"). `None` is reserved
+for the one case where no LLM call happened at all (`llm_client is None`).
+
+## 2026-09-04 — USB-C Hub → Cable Organizer Kit mismatch: root-caused, deliberately not fixed yet
+
+Investigated a report that selecting "USB-C Hub" with a small budget in the
+"try it yourself" form negotiated for a "Cable Organizer Kit" instead, with
+no explanation shown. Root cause in
+`BuyerAgent._find_candidate_product` (`backend/app/buyer_agent/agent.py`):
+tokenizing "USB-C Hub — 7-in-1" splits on non-alphanumerics into
+`["usb", "c", "hub"]` — the single letter `"c"` survives (no minimum
+token-length filter) and scoring uses substring containment
+(`kw in haystack`), so `"c"` spuriously matches almost any product's
+name/description/category (e.g. "ac*c*essories", "*c*able"). When the
+real match (priced above the visitor's 1.5x-budget ceiling) gets filtered
+out, the algorithm falls back to whatever else scored `> 0` — which,
+because of the spurious `"c"` match, can be nearly any cheaper product.
+Confirmed via direct backend calls, not just log reading. Left unfixed on
+explicit instruction ("show me... before fixing anything") — the two
+candidate fixes (filter short tokens / require word-boundary matching, and
+separately, surfacing an honest "couldn't afford your exact pick" message
+when a real substitution *is* intended) are different in scope and the
+user hadn't picked between them as of this session's end.
+
+## 2026-09-04 — `scroll-snap-type` changed from `mandatory` to `proximity`
+
+The dashboard's full-viewport snap-scroll sections used
+`scroll-snap-type: y mandatory`, which forces an instant, physics-free jump
+to the next section on a single wheel tick — fast enough that a section's
+scroll-triggered entrance animation (`SectionReveal`, gated on
+`whileInView`) often didn't even finish, or finished after the snap had
+already settled, reading as "nothing happened" rather than a reveal.
+`proximity` still locks each section into place once the scroll is close to
+it, but doesn't force that jump mid-transit, so the scroll itself moves at
+a pace the entrance animation can actually play alongside. `SectionReveal`
+was also changed to trigger earlier (a positive `viewport.margin` that
+extends the trigger zone past the visible viewport) rather than waiting for
+~35% visibility, so the animation starts before the section has fully
+snapped into place instead of after.
+
+## 2026-09-04 — Primary-flow UI never renders raw backend strings; a plain-language layer sits in front of them
+
+Several backend-generated strings that are perfectly fine for a technical
+audit view leak implementation detail when shown verbatim in the
+visitor-facing negotiation replay: `reason` text embeds trust-layer
+internals (`"...paise"`, `max_spend_paise=`, rule names), the round-0
+system trace message embeds the internal product slug
+(`"Matched product 'X' (usb-c-hub-7in1), list price 189900 paise."`), and
+the deterministic LLM-fallback phrase template used to read literally as
+`"buyer offer: 189900 paise (risk=1.00)"`. Fixed at two levels rather than
+patched per-string: (1) the *fallback phrase template itself*
+(`BuyerAgent._fallback_phrase`) was rewritten to speak in rupees and drop
+the raw risk readout, since that text can end up as an actual chat message,
+not just a log line; (2) `NegotiationChat.jsx` never renders `outcome.reason`
+or the raw trace message directly — `plainOutcomeMessage()` derives a
+human sentence from the classified verdict, and the "matched product" line
+is composed client-side from the clean `outcome.product.name` field instead
+of the backend's trace text. The raw strings are untouched and still
+correct for `AuditLog`/`DecisionTrace`, which are explicitly the technical
+views. Same reasoning extended to the cooldown UI (no "Wait 51s" clock
+badge in the primary flow — a plain "Try again in 51s") and to removing any
+rendering of `API_BASE_URL` from user-facing copy.
+
 ## 2026-09-04 — Dashboard's decision-trace panel reconstructs the rule checklist client-side rather than having the backend return it
 
 `GET /negotiate`'s response only ever names the *one* rule that failed (or

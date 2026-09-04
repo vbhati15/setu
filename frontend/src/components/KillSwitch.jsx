@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Power, AlertTriangle, Loader2 } from "lucide-react";
 import { getKillSwitchStatus, activateKillSwitch, deactivateKillSwitch } from "../api";
 import SectionBackdrop from "./SectionBackdrop";
+import SectionReveal from "./SectionReveal";
 
 export default function KillSwitch() {
   const [status, setStatus] = useState(null);
@@ -78,13 +79,7 @@ export default function KillSwitch() {
         />
       )}
 
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ amount: "some", once: true }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
-        className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full grid lg:grid-cols-[1.1fr_1fr] gap-12 items-center"
-      >
+      <SectionReveal className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full grid lg:grid-cols-[1.1fr_1fr] gap-12 items-center">
         <div>
           <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3 mb-4">
             <Power size={30} className={active ? "text-red-400" : "text-gold-400"} />
@@ -196,7 +191,7 @@ export default function KillSwitch() {
             )}
           </div>
         </div>
-      </motion.div>
+      </SectionReveal>
     </section>
   );
 }

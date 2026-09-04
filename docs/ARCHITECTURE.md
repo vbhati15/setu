@@ -3,9 +3,10 @@
 > Status: Foundation + Merchant Agent + Buyer Agent + Zeuthen bargaining +
 > TrustGuard (kill switch, signature/credential/replay, velocity, daily
 > spend, policy bounds) + public dashboard, all live-deployed and
-> real-data-verified. See `BUILD_LOG.md` (Day 4 Part 3) for the dashboard
-> build and its one open item (a small additive backend change awaiting
-> deploy).
+> real-data-verified. See `BUILD_LOG.md` (Day 4 Part 4) for the dashboard's
+> interactive negotiation form, live chat replay, and hero/nav rework, and
+> Part 3 for the dashboard's original build and its one open item (a small
+> additive backend change awaiting deploy).
 
 ## System overview
 
@@ -13,12 +14,19 @@
   Deployed on Render.
 - **Frontend**: React + Tailwind + Framer Motion dashboard (`frontend/`,
   see `src/App.jsx` and `src/components/`). A real single-page dashboard,
-  not a placeholder: a live negotiation trigger against `POST /negotiate`
-  with a Zeuthen risk-of-conflict chart, a TrustGuard decision-trace panel,
-  the Part 2 scenario-harness's real headline numbers and audit log, and a
-  working kill switch against `/admin/kill-switch/*`. Deployed on Vercel —
-  see `BUILD_LOG.md` (Day 4 Part 3) for what's built and one pending
-  backend deploy needed for full fidelity.
+  not a placeholder: a sticky header/nav over a product-first hero, a
+  "How it works" section, a live negotiation feed where a visitor either
+  picks their own budget + catalog product or fires a random tight-budget
+  scenario (`LiveFeed.jsx`) against the real `POST /negotiate`, replayed as
+  a WhatsApp-style two-party chat paced by each message's real LLM latency
+  (`NegotiationChat.jsx`) with a Zeuthen risk-of-conflict chart, a
+  TrustGuard decision-trace panel, the Part 2 scenario-harness's real
+  headline numbers and audit log, and a working kill switch against
+  `/admin/kill-switch/*` (in a "system status" position near the audit
+  log/footer, not the primary hero flow). Deployed on Vercel — see
+  `BUILD_LOG.md` (Day 4 Part 3 for the original build, Part 4 for the
+  interactive form/chat replay/hero rework) for what's built and one
+  pending backend deploy needed for full fidelity.
 - **Payments**: Razorpay test-mode (Orders + Payments API), via
   `backend/app/razorpay_client.py`.
 - **LLM**: Gemini (free tier), behind a provider-agnostic interface

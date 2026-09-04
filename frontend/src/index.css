@@ -4,7 +4,12 @@
 
 html {
   scroll-behavior: smooth;
-  scroll-snap-type: y mandatory;
+  /* proximity, not mandatory -- mandatory forces an instant, jarring snap on
+     every wheel tick that finishes long before a section's entrance
+     animation can play. proximity still locks each section into place once
+     you're close, but lets the scroll itself move at a natural pace so the
+     reveal animation is actually visible while it happens. */
+  scroll-snap-type: y proximity;
 }
 
 body {
@@ -19,4 +24,32 @@ body {
   min-height: 100vh;
   scroll-snap-align: start;
   scroll-snap-stop: always;
+}
+
+/* Themed scrollbar -- the default light-grey system scrollbar on a near-black
+   page reads as unfinished. Firefox + WebKit only; other browsers keep their
+   default, which is an acceptable fallback. */
+html {
+  scrollbar-color: #3a322a #100e0c;
+  scrollbar-width: thin;
+}
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #100e0c;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a322a;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #e6b95a;
+}
+
+/* Keyboard-focus ring in the brand color instead of the browser default blue --
+   kept visible (never outline: none) so this stays accessible. */
+:focus-visible {
+  outline: 2px solid #e6b95a;
+  outline-offset: 2px;
 }

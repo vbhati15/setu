@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScrollText } from "lucide-react";
 import SectionBackdrop from "./SectionBackdrop";
+import SectionReveal from "./SectionReveal";
 
 export default function AuditLog({ records }) {
   const [filter, setFilter] = useState("all");
@@ -9,16 +10,12 @@ export default function AuditLog({ records }) {
   const outcomes = [...new Set(records.map((r) => r.outcome))];
 
   return (
-    <motion.section
+    <section
       id="audit-log"
-      initial={{ opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "0px 0px -10% 0px" }}
-      transition={{ duration: 0.5 }}
       className="snap-panel relative overflow-hidden flex flex-col justify-center py-20 border-t border-ink-700 w-full"
     >
       <SectionBackdrop />
-      <div className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
+      <SectionReveal className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
       <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3 mb-4">
         <ScrollText size={30} className="text-gold-400" />
         Audit log
@@ -75,8 +72,8 @@ export default function AuditLog({ records }) {
           ))}
         </AnimatePresence>
       </div>
-      </div>
-    </motion.section>
+      </SectionReveal>
+    </section>
   );
 }
 

@@ -4,6 +4,7 @@ import { ShieldCheck } from "lucide-react";
 import { useCountUp } from "../lib/useCountUp";
 import OutcomeDonut from "./charts/OutcomeDonut";
 import SectionBackdrop from "./SectionBackdrop";
+import SectionReveal from "./SectionReveal";
 
 const RULE_LABELS = {
   daily_spend: "daily spend cap breach",
@@ -34,7 +35,7 @@ export default function StatsHeadline({ summary }) {
       className="snap-panel relative overflow-hidden flex flex-col justify-center py-20 border-t border-ink-700 w-full"
     >
       <SectionBackdrop />
-      <div className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
+      <SectionReveal className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
       <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3 mb-4">
         <ShieldCheck size={30} className="text-gold-400" />
         Scenario harness results
@@ -84,7 +85,7 @@ export default function StatsHeadline({ summary }) {
           </ul>
         )}
       </motion.div>
-      </div>
+      </SectionReveal>
     </section>
   );
 }

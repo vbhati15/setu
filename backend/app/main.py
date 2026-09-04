@@ -161,6 +161,7 @@ def _outcome_to_dict(outcome) -> dict:
                 "merchant_offer_paise": t.merchant_offer_paise,
                 "buyer_risk": t.buyer_risk,
                 "merchant_risk": t.merchant_risk,
+                "latency_ms": t.latency_ms,
             }
             for t in outcome.trace
         ],

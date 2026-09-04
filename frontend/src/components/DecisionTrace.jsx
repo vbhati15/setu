@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, X, MinusCircle, GitBranch } from "lucide-react";
 import { classifyOutcome, buildChecklist } from "../lib/rules";
 import SectionBackdrop from "./SectionBackdrop";
+import SectionReveal from "./SectionReveal";
 
 function StepIcon({ status }) {
   if (status === "pass") return <Check size={14} className="text-gold-400 shrink-0" />;
@@ -20,7 +21,7 @@ export default function DecisionTrace({ examples }) {
   return (
     <section id="decision-trace" className="snap-panel relative overflow-hidden flex flex-col justify-center py-20 border-t border-ink-700 w-full">
       <SectionBackdrop />
-      <div className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
+      <SectionReveal className="relative px-6 lg:px-16 max-w-6xl mx-auto w-full">
       <h2 className="text-3xl sm:text-4xl font-semibold text-parchment-100 flex items-center gap-3 mb-4">
         <GitBranch size={30} className="text-gold-400" />
         Decision trace
@@ -139,7 +140,7 @@ export default function DecisionTrace({ examples }) {
           </motion.div>
         </AnimatePresence>
       </div>
-      </div>
+      </SectionReveal>
     </section>
   );
 }

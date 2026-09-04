@@ -29,6 +29,24 @@ build:
   dependencies in `package.json` (`framer-motion`, `lucide-react`) that a
   fresh `npm install` needs.
 
+### Also pending (Day 4 Part 4, later the same day) — not committed
+
+On top of the above, uncommitted at end of this session:
+
+- **`backend/app/buyer_agent/agent.py` / `main.py`**: `NegotiationTrace`
+  now carries a real `latency_ms` per message (measured around the actual
+  LLM call), exposed through `/negotiate`'s `trace[]` — used by the
+  dashboard's chat-style negotiation replay to pace its typing indicator.
+  Without this deployed, a live-triggered negotiation against production
+  falls back to a fixed default typing delay per message instead of the
+  real one.
+- **`frontend/`**: `Header.jsx`, `HowItWorks.jsx`, `NegotiationChat.jsx`,
+  `ScrollProgress.jsx`, `SectionReveal.jsx` (new components), plus the
+  interactive "try it yourself" form in `LiveFeed.jsx`, the hero/nav
+  rework, the `KillSwitch` relocation in `App.jsx`, and the copy cleanup
+  described in `BUILD_LOG.md` (Day 4 Part 4). No new dependencies beyond
+  the ones already listed above.
+
 ### Environment variables set on the hosts (not committed)
 
 - **Render (backend)**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`,

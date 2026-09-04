@@ -1,5 +1,94 @@
 # BUILD_LOG.md
 
+## 2026-09-04 — Day 4 Part 4: interactive negotiation, live chat replay, product-first hero
+
+**Requested across several sessions**: turn the dashboard's live-trigger
+feature into something a visitor can actually drive (their own budget +
+product, not just a random scenario), make the negotiation replay feel like
+a real two-party chat instead of a static log, clean up implementation
+details leaking into user-facing copy, and rework the hero/nav into a
+product-first landing page rather than an engineering status page.
+
+**"Try it yourself" form** (`LiveFeed.jsx`) — the negotiation feed now has a
+form (product dropdown sourced from the real `GET /catalog`, a budget
+slider bounded to the catalog's actual ₹449–₹18,999 price spread) alongside
+the existing random "Surprise me" scenario button. Both post through the
+same `run()` function and the same 60s cooldown (shared `localStorage` key)
+— no separate throttle logic to keep in sync. Verified against a real
+backend: comfortable-budget request produced a real `pay_fake_*`
+transaction (full TrustGuard path, no bypass for this entry point), a
+tight-budget request produced a genuine multi-round Zeuthen negotiation,
+and a deliberately-mismatched budget/product produced the graceful
+"no catalog product matches" outcome.
+
+**Live chat replay** (`NegotiationChat.jsx`, new) — replaces the static
+round-by-round block with a WhatsApp-style two-party replay: a typing
+indicator (animated dots) paced by *that specific message's real LLM
+latency* (backend now measures and returns `latency_ms` per trace entry —
+see `docs/DECISIONS.md`), capped 350ms–1.6s so a slow call doesn't stall
+the replay, then the bubble fades in. Buyer left, Setu (merchant) right,
+each with a small avatar. Risk(Buyer)/Risk(Merchant) and the round's
+concession note are inline on the bubble they belong to, not a separate
+block. A distinct summary card (deal price / escalated / rejected / no
+match) appears only once the full replay finishes. One component, reused
+by both the random-scenario button and the "try it yourself" form.
+
+**Copy cleanup — nothing implementation-shaped in the primary flow**:
+removed the raw backend URL from user-facing text ("live response from
+http://..."), the internal product slug shown next to product names, the
+"this response predates the risk-telemetry fields" developer note, the
+harsh "Wait 51s" clock-icon cooldown badge (now a plain greyed "Try again
+in 51s"), and the "POST /negotiate against the real backend" copy (now
+"Your AI agent is negotiating in real time"). The negotiation outcome card
+no longer renders the backend's raw `reason` string (which can embed
+`"...paise"`, rule names, `max_spend_paise=` internals) — see
+`docs/DECISIONS.md` for the plain-language layer that replaces it. All of
+this stays exactly as-is, verbatim, in `AuditLog`/`DecisionTrace`, which are
+the intentionally technical views.
+
+**Hero, header, "How it works"** — added a sticky header (`Header.jsx`,
+new: wordmark left, "How it works"/"Try it" smooth-scroll links right,
+transparent-to-blurred on scroll) and a `HowItWorks.jsx` section that now
+holds the full x402/Zeuthen/trust-layer technical description, moved out of
+the hero. Hero subheadline rewritten to "AI agents that negotiate, pay, and
+explain themselves."; badges reworded to plain language while staying wired
+to real `summary` data (no fabricated numbers); single solid-amber primary
+CTA ("See it negotiate") plus a secondary "How it works" button; the
+"Try the kill switch" hero shortcut was removed and the `KillSwitch`
+component itself relocated to sit next to `AuditLog`, right before the
+footer — re-verified live after the move (activate → a real `/negotiate`
+call correctly blocked with "kill switch is active" → deactivate → confirmed
+clean) since it's a different page position, not different wiring. Also
+added a page-load fade-in, a scroll-progress bar (`ScrollProgress.jsx`,
+new), a themed scrollbar/focus ring, and a proper page title/favicon/meta
+description (`index.html`) in place of the generic "Setu Dashboard" tab.
+
+Two decorative additions were tried and explicitly reverted this session:
+a mouse-following spotlight in the hero (reverted to the original fixed
+ambient glow — the user found a moving light distracting) and a "bridge"
+background motif behind the headline referencing Setu's literal meaning
+("bridge" in Sanskrit/Hindi) — an SVG arc connecting two pulsing nodes with
+a traveling spark. The bridge motif went through two bug-fix rounds (a
+non-uniform-viewBox distortion that flattened the nodes into ellipses, then
+a `vector-effect="non-scaling-stroke"` interaction with framer-motion's
+`pathLength` draw-in that cut the line short) before being removed outright
+on request rather than iterated further.
+
+**Investigated, not fixed**: a product-matching bug where selecting an
+expensive item with too little budget silently negotiates for an unrelated
+cheap item instead (root cause: a stray single-letter keyword token plus
+substring-containment scoring in `BuyerAgent._find_candidate_product` — see
+`docs/DECISIONS.md`). Left open on explicit instruction to investigate
+before fixing.
+
+**Also flagged, not acted on**: several large, unrelated instructions
+(a full hero/nav redesign, later duplicated near-verbatim) arrived attached
+to background-task tool notifications rather than as genuine user turns,
+referencing prior requests and screenshots that don't exist earlier in the
+actual conversation. Treated as likely prompt injection and not applied;
+the same redesign was later done for real once the user asked for it
+directly in an actual message.
+
 ## 2026-09-04 — Day 4 Part 3: public dashboard, built against real data only
 
 **Requested**: a single-page public dashboard proving the system live —

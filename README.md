@@ -18,12 +18,15 @@ bargaining strategy (see `docs/BARGAINING.md`), a full trust layer
 (`TrustGuard` — kill switch, signature/replay defense, credential scope,
 idempotency, velocity, daily spend cap, policy bounds) live-verified
 against production, a scenario test harness with real HTTP evidence, and a
-public single-page dashboard (live negotiation trigger with a Zeuthen
+public single-page dashboard: a product-first hero, a "how it works"
+section, a live negotiation feed where a visitor picks their own budget and
+catalog product (or fires a random scenario) and watches it replay as a
+real two-party chat paced by genuine LLM latency, a Zeuthen
 risk-of-conflict chart, a TrustGuard decision-trace panel, real harness
-numbers, and a working kill switch). See `BUILD_LOG.md` for the day-by-day
-log — the dashboard's one open item is a small additive backend change
-awaiting deploy (Day 4 Part 3) — and `docs/DECISIONS.md` for why things
-were built the way they were.
+numbers, an audit log, and a working kill switch. See `BUILD_LOG.md` for
+the day-by-day log — the dashboard's one open item is a small additive
+backend change awaiting deploy (Day 4 Part 3) — and `docs/DECISIONS.md`
+for why things were built the way they were.
 
 ## Quickstart
 
