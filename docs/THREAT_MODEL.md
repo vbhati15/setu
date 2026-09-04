@@ -1,12 +1,16 @@
 # THREAT_MODEL.md
 
-> Status: Day 4. Trust/safety layer (signed identity, policy engine,
+> Status: Day 6. Trust/safety layer (signed identity, policy engine,
 > idempotency, velocity limits, daily spend cap, kill switch,
-> retry-with-backoff) has landed and **every rule is now live-verified**
+> retry-with-backoff) has landed and **every rule is live-verified**
 > against production on both `GET /products/{id}` and `POST /negotiate` —
 > kill switch, spend cap/credential scope, velocity, daily spend cap
 > (Day 4 Part 1), and idempotency (Day 4 Part 2, closing the last gap via
-> the scenario harness). See "Trust/safety layer (Day 3)" below.
+> the scenario harness). See "Trust/safety layer (Day 3)" below. Since then:
+> real Razorpay Checkout for human-triggered deals (Day 5) and signed,
+> standalone-verifiable transaction certificates (Day 6) have both been
+> **fully closed with a real human click-through**, not just a code-path
+> demo — see the two sections below dated 2026-09-05.
 
 ## Assets
 
@@ -342,6 +346,80 @@ success/failure. A persistent failure still surfaces as a clear rejection
 (`RetryExhausted`), never as a false "payment verified." See
 `test_simulated_razorpay_timeout_is_retried_and_recovers`,
 `test_persistent_razorpay_failure_is_not_hidden_as_success`.
+
+## Real Razorpay Checkout for human-triggered negotiations (2026-09-05)
+
+The dashboard's "try it yourself"/"surprise me" flows now send
+`auto_pay: false` on `POST /negotiate`, which hands a real human a real
+Razorpay test-mode Checkout for the negotiated price instead of the fake
+rail (see `docs/DECISIONS.md`, 2026-09-05). This adds two new endpoints
+(`POST /checkout/order`, `POST /checkout/confirm`) and a new class of
+question: can a client get a real order/charge for a price it wasn't
+actually negotiated?
+
+**Mitigation**: neither endpoint accepts a client-supplied price at all.
+Both take only a `checkout_token` — a short-lived HMAC-signed token
+(`backend/app/checkout_quote.py`) minted server-side the moment
+`BuyerAgent` actually closes a deal, binding `(product_id,
+agreed_price_paise)`. The signature is verified with `hmac.compare_digest`
+(constant-time) before the payload is trusted; a tampered body, wrong
+signature, or expired token (`checkout_quote_ttl_seconds`, default 10
+minutes) is rejected with no Razorpay call made at all — see
+`test_checkout_quote.py`'s tampering/expiry cases and
+`test_checkout_endpoints.py`'s endpoint-level equivalents.
+
+`/checkout/order` checks the shared kill switch before creating a real
+order (same `TrustGuard` instance as every other endpoint —
+`test_checkout_order_blocked_by_kill_switch_before_any_real_razorpay_call`).
+`/checkout/confirm` doesn't duplicate payment-verification logic at all: it
+builds the same `X-PAYMENT` header shape `BuyerAgent` already builds and
+calls `MerchantAgent.handle_request(..., agreed_price_paise=...)` — the
+exact code path `GET /products/{id}` uses, including the anonymous-caller
+trust check (`caller_id`) and the real signature/amount verification
+against Razorpay. No new payment-verification code to keep in sync with
+the existing one.
+
+**Not automated, by design, matching the 2026-09-02 decision below**: this
+only works because a real person clicks the real Checkout widget in their
+own browser. Nothing on our side scripts the widget's own form (card
+number, OTP) — that's the specific thing that trips Razorpay's bot
+detection, not the fact that a payment happens. Verified live: opening a
+real order's Checkout widget in a real (non-headless) browser reached the
+normal "Contact details" step with the correct negotiated price and the
+"Test Mode" ribbon, not a bot-detection stall — see `BUILD_LOG.md`.
+
+**Fully closed 2026-09-05**: an actual person completed the full flow in
+their own browser — a comfortable-budget negotiation, a real Razorpay
+test-mode Checkout (domestic test card), a real transaction id
+(`pay_TY6AQ50iNNS6nZ`) — not just the widget opening correctly. See
+`BUILD_LOG.md` (2026-09-05, Day 6) for the full transcript.
+
+## Signed transaction certificates (2026-09-05)
+
+Once a human-triggered checkout actually completes (`POST /checkout/confirm`
+returns 200), the response carries a small Ed25519-signed certificate —
+product, agreed price, transaction id, timestamp, and exactly which checks
+that transaction passed (`backend/app/certificate.py`). Signed with the
+same `CredentialIssuer` keypair that already signs agent credentials
+(`trust/identity.py`) — no new key, no new crypto. See `docs/DECISIONS.md`
+for why the certificate's checklist is deliberately worded independently of
+the Decision Trace panel's `SIGNED_PIPELINE` (they're genuinely different
+pipelines — the anonymous checkout path this feature covers doesn't run
+the same checks as the signed-agent path).
+
+**What it defends against**: a downloaded certificate can be checked with
+`verify_certificate.py`, entirely offline, with no trust in this backend at
+all — any alteration to any field (price, product, transaction id) breaks
+Ed25519 signature verification. It does **not** prove the signing key
+belongs to a trustworthy Setu instance on its own (no CA chain) — the same
+self-signed-certificate caveat that already applies to `AgentCredential`.
+
+**Live-verified 2026-09-05, not just a code-path demo**: a real human
+completed a real Razorpay Checkout, downloaded the actual certificate file
+the button produced, and ran the actual standalone script against it —
+`✓ Valid`. A copy of that same real file with one digit changed —
+`✗ Invalid — signature does not match`. See `BUILD_LOG.md` (2026-09-05,
+Day 6) for the full transcript.
 
 ## Known gaps (tracked, not yet mitigated)
 

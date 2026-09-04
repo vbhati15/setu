@@ -1,18 +1,9 @@
 import { useRef } from "react";
 import { motion, useInView } from "framer-motion";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, ShieldAlert } from "lucide-react";
 import { useCountUp } from "../lib/useCountUp";
+import { RULE_LABELS, OUTCOME_LABELS } from "../lib/rules";
 import OutcomeDonut from "./charts/OutcomeDonut";
-
-const RULE_LABELS = {
-  daily_spend: "Tried to spend more than the daily limit allows",
-  credential_scope: "Tried to act outside what it's authorized to do",
-  velocity: "velocity limit breach",
-  spend_cap: "per-transaction spend cap breach",
-  category: "category-policy violation",
-  kill_switch: "kill-switch block",
-  idempotency: "duplicate-charge attempt caught",
-};
 
 export default function StatsHeadline({ summary }) {
   const ref = useRef(null);
@@ -48,9 +39,9 @@ export default function StatsHeadline({ summary }) {
       </div>
 
       <div className="grid sm:grid-cols-4 gap-4 mb-6">
-        <Stat label="flagged for review" value={outcomes.escalated || 0} inView={inView} delay={0.1} />
-        <Stat label="blocked automatically" value={outcomes.rejected || 0} inView={inView} delay={0.2} />
-        <Stat label="no good deal found" value={outcomes.graceful_no_match || 0} inView={inView} delay={0.3} />
+        <Stat label={OUTCOME_LABELS.escalated.toLowerCase()} value={outcomes.escalated || 0} inView={inView} delay={0.1} />
+        <Stat label={OUTCOME_LABELS.rejected.toLowerCase()} value={outcomes.rejected || 0} inView={inView} delay={0.2} />
+        <Stat label={OUTCOME_LABELS.graceful_no_match.toLowerCase()} value={outcomes.graceful_no_match || 0} inView={inView} delay={0.3} />
         <Stat label="named scenarios" value={total_named_scenarios} inView={inView} delay={0.4} />
       </div>
 
@@ -58,19 +49,25 @@ export default function StatsHeadline({ summary }) {
         initial={{ opacity: 0, y: 10 }}
         animate={inView ? { opacity: 1, y: 0 } : {}}
         transition={{ delay: 0.5, duration: 0.5 }}
-        className="rounded-lg border border-ink-700 bg-ink-900/50 p-4"
+        className="rounded-lg border border-ink-700 bg-ink-900/50 p-5"
       >
-        <div className="text-xs font-mono uppercase tracking-wide text-parchment-500 mb-3">
+        <div className="text-xs tracking-wide text-parchment-500 mb-3">
           During testing, we deliberately tried to break these rules — here's what got caught:
         </div>
         {blocked.length === 0 ? (
           <div className="text-sm text-parchment-500">no rules fired in this run</div>
         ) : (
-          <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-1.5">
+          <ul className="space-y-2">
             {blocked.map(([rule, count]) => (
-              <li key={rule} className="flex items-center justify-between text-sm font-mono">
-                <span className="text-parchment-300">{RULE_LABELS[rule] || rule}</span>
-                <span className="text-gold-400">{count}×</span>
+              <li
+                key={rule}
+                className="flex items-center gap-3 rounded-md border border-ink-800 bg-ink-950/40 px-3.5 py-2.5"
+              >
+                <ShieldAlert size={16} className="text-gold-400 shrink-0" />
+                <span className="text-sm text-parchment-300 flex-1">{RULE_LABELS[rule] || rule}</span>
+                <span className="text-xs font-mono text-gold-400 bg-gold-500/10 border border-gold-500/30 rounded-full px-2.5 py-0.5 shrink-0">
+                  {count}×
+                </span>
               </li>
             ))}
           </ul>

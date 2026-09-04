@@ -18,6 +18,19 @@ const STORAGE_KEY = "setu_last_negotiate_trigger_ts";
 const FALLBACK_MIN_RUPEES = 449;
 const FALLBACK_MAX_RUPEES = 18_999;
 
+const OCCASIONS = [
+  { value: "gift", label: "Gift" },
+  { value: "personal", label: "Personal use" },
+  { value: "work", label: "Work setup" },
+  { value: "browsing", label: "Just browsing" },
+];
+
+const PRIORITIES = [
+  { value: "best_price", label: "Best price" },
+  { value: "fastest_deal", label: "Fastest deal" },
+  { value: "upsells", label: "Open to upsells" },
+];
+
 // Curated scenarios only -- real catalog products/budgets mirroring the
 // scenario harness (backend/app/scripts/scenario_harness.py), chosen to
 // produce genuine multi-round Zeuthen negotiations rather than instant
@@ -46,6 +59,8 @@ export default function LiveFeed({ onResult }) {
   const [catalogError, setCatalogError] = useState(null);
   const [productId, setProductId] = useState("");
   const [budgetRupees, setBudgetRupees] = useState(FALLBACK_MIN_RUPEES);
+  const [occasion, setOccasion] = useState(OCCASIONS[0].value);
+  const [priority, setPriority] = useState(PRIORITIES[0].value);
 
   useEffect(() => {
     getCatalog()
@@ -88,7 +103,10 @@ export default function LiveFeed({ onResult }) {
     setError(null);
     const startedAt = Date.now();
     try {
-      const body = await postNegotiate(chosen.goal_text, chosen.budget_paise, chosen.product_id);
+      const body = await postNegotiate(chosen.goal_text, chosen.budget_paise, chosen.product_id, {
+        occasion: chosen.occasion,
+        priority: chosen.priority,
+      });
       const ts = Date.now();
       setResult({ body, source: "live", scenario: chosen, ts });
       setState("done");
@@ -115,6 +133,8 @@ export default function LiveFeed({ onResult }) {
       goal_text: selectedProduct.name,
       budget_paise: budgetPaise,
       product_id: selectedProduct.id,
+      occasion,
+      priority,
       custom: true,
     });
   }
@@ -186,7 +206,7 @@ export default function LiveFeed({ onResult }) {
           <div className="text-sm font-mono text-red-400 mb-4">couldn't load catalog: {catalogError}</div>
         )}
 
-        <div className="grid sm:grid-cols-[1fr_1fr_auto] gap-4 items-end">
+        <div className="grid sm:grid-cols-2 gap-4 mb-4">
           <label className="block">
             <span className="block text-xs text-parchment-500 mb-1.5">Product</span>
             <select
@@ -222,7 +242,41 @@ export default function LiveFeed({ onResult }) {
               <span>₹{maxRupees.toLocaleString("en-IN")}</span>
             </div>
           </label>
+        </div>
 
+        <div className="grid sm:grid-cols-2 gap-4 mb-5">
+          <label className="block">
+            <span className="block text-xs text-parchment-500 mb-1.5">What's this for?</span>
+            <select
+              value={occasion}
+              onChange={(e) => setOccasion(e.target.value)}
+              className="w-full rounded-md border border-ink-700 bg-ink-950 px-3 py-2.5 text-sm text-parchment-100 focus:outline-none focus:border-gold-500/50"
+            >
+              {OCCASIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="block text-xs text-parchment-500 mb-1.5">What matters most to you?</span>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="w-full rounded-md border border-ink-700 bg-ink-950 px-3 py-2.5 text-sm text-parchment-100 focus:outline-none focus:border-gold-500/50"
+            >
+              {PRIORITIES.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="flex justify-end">
           {cooldown > 0 ? (
             <span className="inline-flex items-center justify-center gap-2 rounded-md px-5 py-2.5 text-sm text-parchment-500">
               Try again in {cooldown}s

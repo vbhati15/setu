@@ -1,5 +1,341 @@
 # BUILD_LOG.md
 
+## 2026-09-05 — Day 6: signed transaction certificates, negotiation-latency fix, judge-facing README rewrite, and the last open gap closed for real
+
+**Requested across the session**: fix "Start negotiation" taking close to a
+minute; add a lightweight but *genuinely verifiable* transaction-certificate
+feature (Ed25519-signed, standalone-verifiable, reusing existing crypto, not
+a new subsystem); rewrite `README.md` for a judge audience; then, live
+debugging of the actual dashboard: a stale local backend process serving
+pre-`auto_pay` code, Razorpay test-card/OTP mechanics, and finally a real
+human click-through of the whole certificate flow end to end.
+
+**Negotiation latency fix** (`backend/app/buyer_agent/agent.py`) — root
+cause: up to 12 rounds × 2 live Gemini phrasing calls, run fully
+sequentially, each up to the 20s per-call timeout — the dominant cost of a
+negotiation. The phrasing calls are pure flavor text (never feed back into
+the Zeuthen math, and by the time `_render_trace` runs, every round's
+numbers are already final), so every one of them is independent of every
+other. `_render_trace` now fires all of them at once via a
+`ThreadPoolExecutor` instead of one-by-one, then reassembles the trace in
+original round order. Turns wall-clock cost from "sum of ~24 sequential
+calls" into "roughly one call's latency." All 136 backend tests passed
+unchanged after the change.
+
+**Signed transaction certificates** — new, tightly scoped feature:
+`backend/app/certificate.py` (`build_certificate`), a `CredentialIssuer.sign_payload`
+addition reusing the *existing* Ed25519 issuer key (`trust/identity.py`) —
+no new crypto, no new key. Wired into `POST /checkout/confirm` (`main.py`):
+once a human-triggered purchase actually completes, the response carries a
+signed `certificate` — product, price, transaction id, timestamp, and the
+real (not `SIGNED_PIPELINE`-copied) list of checks that specific
+anonymous-checkout transaction passed. Frontend: a "Download verification
+certificate" button + explanatory copy on `NegotiationChat.jsx`'s result
+card, wired through `CheckoutButton.jsx`'s `onSuccess` callback. Standalone
+verifier `verify_certificate.py` (repo root) — only depends on
+`cryptography` (already in `requirements.txt`), no import of this repo's
+backend package, no network call; reads the certificate's own embedded
+public key and checks the Ed25519 signature against a re-canonicalized copy
+of the payload. New test file `backend/tests/test_certificate.py` (4 tests:
+expected fields, real verification round-trip through the actual standalone
+script, tampering detection, wrong-key forgery detection) — 140/140 backend
+tests passing. Full reasoning (especially *why* the certificate's checklist
+is deliberately its own wording rather than a copy of the Decision Trace
+panel's `SIGNED_PIPELINE`, since the anonymous-checkout path runs a
+genuinely different, real pipeline) in `docs/DECISIONS.md`.
+
+**First verified with a code-path-equivalent demo, not yet a live click**: a
+real 11-round Zeuthen negotiation run in-process, certificate built with the
+same `build_certificate()` main.py calls, verified — `✓ Valid`; one digit
+tampered — `✗ Invalid — signature does not match`. Flagged explicitly at the
+time as *not* a substitute for an actual human completing a real Razorpay
+Checkout and downloading the real button's output.
+
+**`README.md` rewritten for a judge audience** — badges, a "why it's
+different" comparison table (deterministic Zeuthen math vs. an LLM
+freestyling a price; live-verified trust checks vs. a README claim; a
+downloadable signed certificate vs. "trust our database"), two Mermaid
+diagrams (system architecture, the 8-step trust pipeline as a flowchart),
+tech stack table, project structure tree, an honest "Known limitations"
+section, and four image placeholders (`docs/screenshots/*.png`, each with an
+`<!-- TODO -->` comment) with a `docs/screenshots/README.md` explaining
+exactly what to capture for each filename.
+
+**Live debugging session, three real issues found and fixed in sequence**:
+
+1. **A stale local backend process was serving pre-`auto_pay` code.**
+   Symptom: a real multi-round negotiation completed, converged to a genuine
+   deal, but the result card showed "Couldn't be completed" /
+   `verdict === "rejected"` instead of a checkout button. Root-caused by
+   reading `classifyOutcome` (`frontend/src/lib/rules.js`): that verdict is
+   only reachable when the backend's `reason` text contains "rejected by
+   trust layer" — which the *current* `_negotiate` code cannot produce when
+   `auto_pay=false`, since it returns a `checkout_token` before ever calling
+   `_pay_and_collect`/`TrustGuard`. The only way to see that text is a
+   backend still running pre-`auto_pay` code that pays immediately
+   regardless of the request field, hitting the shared `BuyerAgent`
+   singleton's accumulated velocity/daily-spend state from a session's worth
+   of repeated local testing. Confirmed via process inspection: the running
+   `uvicorn` process had started well before this session's edits. Killed it
+   (`taskkill /F`) and restarted fresh (`uvicorn --reload`); confirmed via a
+   direct `curl POST /negotiate` that the new process correctly returns
+   `payment_pending: true` + a real `checkout_token` instead of attempting
+   payment.
+2. **Razorpay test-mode mechanics** — talked through live: the generic
+   `4111 1111 1111 1111` test Visa number was rejected as an "international
+   card" (this test account is domestic-only), a placeholder-looking mobile
+   number (`9876543210`) was rejected by client-side fraud heuristics that
+   run even in test mode. Resolved with Razorpay's actual documented
+   domestic test Mastercard (`5267 3181 8797 5449`) / Netbanking's mock
+   Success/Failure page, and a less obviously-fake mobile number.
+3. **The real end-to-end click-through, finally done by an actual human** —
+   closes the gap named explicitly in the 2026-09-05 (Day 5) entry below
+   ("the final manual click-through needs to be done and confirmed by an
+   actual person"). A comfortable-budget negotiation (Mechanical Keyboard,
+   budget covering list price) → real Razorpay test-mode Checkout, completed
+   by the user in their own browser → `pay_TY6AQ50iNNS6nZ`, a **real**
+   transaction id → "Download verification certificate" button appeared →
+   downloaded `setu-certificate-pay_TY6AQ50iNNS6nZ.json` from the browser's
+   actual Downloads folder → `python verify_certificate.py` against that
+   exact file:
+   ```
+   Issuer:          setu-platform
+   Transaction ID:  pay_TY6AQ50iNNS6nZ
+   Product:         Mechanical Keyboard — Hot-swap, 65% (mechanical-keyboard-65)
+   Agreed price:    ₹3,499.00
+   ✓ Valid — this certificate has not been altered
+   ```
+   Then, on a copy of that same real file, one digit changed
+   (`agreed_price_paise` 349900 → 349800, i.e. ₹3,499.00 → ₹3,498.00):
+   ```
+   ✗ Invalid — signature does not match
+   ```
+   This is the strongest available proof for this feature: a real
+   negotiation, a real human-completed Razorpay payment, a real downloaded
+   file (not a code-path stand-in), verified by the actual standalone
+   script, correctly accepting the untouched file and correctly rejecting a
+   one-character tamper.
+
+**Closed.** Both gaps named at the end of the 2026-09-05 (Day 5) entry below
+— "the real-Checkout flow's actual payment completion... needs to be done
+and confirmed by an actual person" and the certificate feature's own
+click-through gap — are now closed with real evidence, not a code-path
+stand-in. **Still not committed** — see `git status`.
+
+## 2026-09-05 — Day 5: hero redesign, gold theme restored, proof-tab plain-language pass, real negotiation levers (occasion/priority), real Razorpay Checkout for human-triggered deals
+
+**Requested across the session**: a long, iterative round of hero visual
+work; reverting the color theme back to black/gold; making every proof-tab
+panel actually fit one screen; a full plain-language copy pass across Kill
+switch / Decision trace / Test results / Audit log (the previous pass had
+missed several of these); diagnosing why negotiations were taking minutes;
+two new negotiation-form fields that need to *genuinely* change agent
+behavior, not just look like they do; and, as the last and largest piece,
+routing real-human negotiations to a real Razorpay Checkout instead of the
+fake rail.
+
+**Hero backdrop, iterated to "two connected worlds"**
+(`AgentConnectionBackdrop.jsx`) — went through several passes on request:
+two small pulsing dot-nodes → bigger Earth-styled spheres (filled
+radial-gradient continents, rejected as "too matte") → Lucide's `Earth`
+icon (line-art, rejected as too abstract, no visible network) → the
+final version: a hand-built SVG globe per side (shaded sphere via
+`radialGradient`, five stylized continent paths, a ~24-node scattered
+network mesh with connecting lines, all in the gold/ink palette) linked by
+the same pulsing offer-packet beam as before. Sized down and requested
+smaller twice more (168/190px → 178px both equal → 128px both equal);
+animation intensity (opacity, glow, spin speed) reduced on request after
+the first "make it real" pass read as too busy.
+
+**Theme reverted crimson → gold/black**: `tailwind.config.js`'s `crimson`
+scale (added in an earlier session) replaced back with the original `gold`
+scale (`#f0cd7c`/`#e6b95a`/`#d9a441`/`#b8842e`, recovered from git history),
+and every `crimson-*` Tailwind class plus hardcoded crimson hex/`rgba(...)`
+value across ~15 files mechanically renamed/swapped (`sed`, matching how
+the original gold→emerald→crimson renames were done). `ink`/`parchment`
+and the separate danger-red states (kill switch active, rejected outcomes)
+were untouched — same overlap-with-red-family caveat as before, now with
+gold as the brand color instead of crimson.
+
+**Global 80% scale** (`index.css`): `html { font-size: 80%; }`. Since
+Tailwind's spacing/sizing/type utilities are rem-based, this scales nearly
+the entire UI uniformly — the same lever a browser's own 80% zoom pulls —
+requested after the redesigned hero read as too large at 100%. Went via an
+intermediate 90% first, then to 80% on request.
+
+**Proof tabs made to actually fit one viewport** — the "Test results" tab
+(and, once checked, "Decision trace" too) were taller than a real laptop
+viewport, meaning `scroll-snap-stop: always` locked visitors into a partial
+view. Fixed by compacting `ProofTabs.jsx`, `StatsHeadline.jsx`,
+`OutcomeDonut.jsx`, `DecisionTrace.jsx`, `KillSwitch.jsx`, and `AuditLog.jsx`
+(smaller headings, tighter padding/gaps, a smaller donut chart, a capped
+audit-log scroll height) until each tab's real rendered height, verified
+via a headless-browser screenshot at 1440×816, exactly matched the
+viewport with no overflow. A second bug from the same fix: the tab bar was
+rendering *under* the page's fixed header (visible cropped at the top of a
+screenshot) because the section's top padding (40px) was less than the
+header's real height (~57px); fixed by rebalancing the section's padding
+(`pt-16 pb-4` instead of a uniform `py-10`) rather than adding padding,
+which would have pushed the section taller than the viewport again.
+
+**Plain-language copy pass, completed** — the previous session's pass had
+only reached the Test results panel; this session found and fixed the
+same problem in the other three tabs, since "it says it's fixed but isn't
+everywhere" was flagged directly:
+- **Kill switch**: the `/negotiate`/`/products/{id}`/`/admin/kill-switch/*`
+  paragraph replaced with "One switch, complete control. If something
+  looks wrong, this instantly stops every new transaction — no exceptions,
+  no delay. This isn't a demo toggle — it's connected to the real, live
+  system." Default activation-reason text changed from the code-comment-ish
+  "manually triggered from dashboard" to "Activated manually from the
+  dashboard"; the `X-ADMIN-KEY` placeholder changed to "Enter your admin
+  key" (the field's function — same header, same value — is unchanged).
+- **Decision trace**: the TrustGuard-pipeline paragraph (which named a
+  backend file path, `backend/app/trust/guard.py`, directly in user-facing
+  copy) replaced with "Before any purchase goes through, we run 8
+  independent safety checks, in order. If any single one fails, everything
+  stops right there — no partial approvals, no guessing." The per-example
+  scenario line (raw harness shorthand like `cable-organizer-kit @
+  budget=44900 (exact budget, no upsell room)`) replaced with a
+  `friendlySummary()` built from the same response data ("Buying: Cable
+  Organizer Kit · Budget: ₹449 (exact match, no room for extras)"), with a
+  distinct plain-language note per verdict (approved-with-upsell,
+  escalated/daily-spend, rejected/credential-scope). The footer line
+  (`verdict: APPROVED · POST /negotiate · 200 · 15001.7ms`) replaced with
+  "Result: Approved · Completed in 15 seconds" — raw HTTP method/status
+  gone, milliseconds converted to a readable duration.
+- **Test results**: the remaining raw backend URL
+  (`https://setu-59l6.onrender.com`) removed from the intro line, replaced
+  with "We tested Setu against 22 real-world situations — including ones
+  designed to try to break it. Here's exactly what happened, every time.";
+  `base_url` dropped from the destructured summary entirely so it can't
+  silently leak back in. Outcome category labels relabeled
+  (`compliant`→"Completed successfully", `escalated`→"Flagged for review",
+  `rejected`→"Blocked automatically", `graceful_no_match`→"No good deal
+  found", with an added note clarifying that one is a *good* outcome — the
+  system correctly recognized no deal made sense rather than forcing a bad
+  one). `verification_failed` was deliberately **not** relabeled yet —
+  investigated first (it's the harness's own deliberate fake-payment-id
+  test methodology working as intended, not a real failure — see
+  `scenario_harness.py:190`) and left pending an explicit label choice
+  rather than guessing friendly copy that could hide a real problem. The
+  rule-breach box's header changed from all-caps mono ("BLOCKED, BY RULE
+  (real breaches this run deliberately triggered)") to a small sentence-case
+  line, and each rule's presentation redesigned from a two-column grid of
+  run-on text into individual rows (a `ShieldAlert` icon, the description,
+  and the count as a rounded gold pill), each its own bordered mini-card
+  with real spacing between them.
+- **Audit log**: description line replaced with "Every single test, in the
+  order it happened — with real order numbers, real timestamps, and how
+  long each one took." Filter chips and log rows were still showing the raw
+  outcome slugs, `POST /negotiate`, HTTP status codes, raw milliseconds, and
+  `tx=pay_fake_22` — none of that had actually been touched despite being
+  asked for previously. Fixed: filter chips and rows now use the same
+  `OUTCOME_LABELS` as the other tabs; `describeEndpoint()` turns
+  `POST /negotiate` into "Negotiation"; raw status codes removed entirely;
+  `formatDuration()` turns milliseconds into "15 seconds"/"2m 22s";
+  `orderNumber()` turns `pay_fake_22` into "Order #22".
+- **Consistency fix**: `OUTCOME_LABELS`, `RULE_LABELS`, and `formatDuration`
+  were previously duplicated (and, in the audit log's case, simply never
+  applied) across `StatsHeadline.jsx`, `OutcomeDonut.jsx`, and
+  `DecisionTrace.jsx`. Centralized into `frontend/src/lib/rules.js` as the
+  single source of truth, so the same category can no longer read three
+  different ways across tabs.
+
+**Root-caused why negotiations were taking minutes**: `GeminiClient`
+(`backend/app/llm/gemini_client.py`) never set a request timeout, and a
+tight-budget negotiation makes up to 24 real Gemini calls sequentially (2
+per round × up to 12 rounds) — one stalled/rate-limited call had no upper
+bound at all. Fixed with a 20-second per-call timeout
+(`Settings.gemini_timeout_ms`, wired via `genai.Client(http_options=...)`);
+a call that would have hung now fails at 20s into the existing fallback
+phrasing path (templated sentence, negotiation math unaffected). Verified
+live: a negotiation that previously hung indefinitely completed in 164s,
+with real per-call latencies showing several genuine ~20.7s timeouts mixed
+with several fast (1.7–8s) successful calls — the mechanism, not a guess.
+Separately diagnosed a "stuck" report as a distinct issue: an
+already-in-flight request (from an infeasible budget/product combo — see
+below) left `LiveFeed.jsx`'s `state === "loading"` guard blocking a second
+submit; the fix there was "refresh the page," not a code change.
+
+**Two new "try it yourself" form fields, both genuinely behavioral, not
+cosmetic** (`LiveFeed.jsx`, `backend/app/buyer_agent/agent.py`,
+`backend/app/main.py`):
+- **Occasion** ("Gift"/"Personal use"/"Work setup"/"Just browsing") flows
+  into the buyer's own system trace line and the *buyer's* LLM phrasing
+  prompt only (never the merchant's, never the negotiation math) — verified
+  the actual trace text for `occasion="gift"`: "...list price 89900 paise.
+  This purchase is a gift for someone else."
+- **Priority** ("Best price"/"Fastest deal"/"Open to upsells") changes the
+  real Zeuthen parameters a negotiation runs under
+  (`_PRIORITY_PARAMS`: opening-offer fraction + concession-fraction
+  multipliers) and the upsell-acceptance buffer
+  (`_UPSELL_BUFFER_FRACTION`). Verified with a deterministic (no-LLM) script
+  across all 5 of the frontend's curated tight-budget scenarios: `best_price`
+  consistently closed at the lowest price in 11–12 rounds (e.g. wireless
+  mouse: ₹1,037.56 vs. ₹1,037.80 default), `fastest_deal` consistently
+  closed fastest at a higher price (7 rounds, ₹1,076.13) — a real,
+  reproducible ordering, not a label. The first multiplier attempt
+  (0.5/0.7) made `best_price` fail to close *every* curated scenario within
+  the round cap — re-tuned to (0.55/0.85/0.95) so it reliably still reaches
+  a deal, just a better one, more slowly.
+
+**Real Razorpay Checkout for human-triggered negotiations** — the largest
+piece this session. `POST /negotiate` gained `auto_pay` (default `true`,
+untouched behavior for the scenario harness and any other backend-automated
+caller, which never sets it): `BuyerAgent.negotiate_and_purchase` still
+runs the identical real negotiation, but with `auto_pay=false` (what the
+dashboard now always sends) it stops short of paying and returns
+`payment_pending: true` plus a `checkout_token`. New:
+`backend/app/checkout_quote.py` (a short-lived HMAC-signed token binding
+the exact `(product_id, agreed_price_paise)` a negotiation actually closed
+at, so a client can never get a real order created at a tampered price);
+`POST /checkout/order` (creates a real Razorpay test-mode order for that
+exact price) and `POST /checkout/confirm` (verifies the real payment by
+reusing `MerchantAgent.handle_request`'s existing `agreed_price_paise`
+path — the same code `GET /products/{id}` already used, no parallel
+verification logic). Frontend: `CheckoutButton.jsx` loads Razorpay's real
+`checkout.js`, opens the real widget, and handles success/failure/cancel
+distinctly, wired into `NegotiationChat.jsx`'s result card. `docs/DECISIONS.md`
+and `docs/THREAT_MODEL.md` both updated with the full reasoning.
+
+Verified live, not just reviewed: ran a real human-triggered negotiation
+(`auto_pay:false`) end to end — got back `payment_pending: true`,
+`transaction_id: null`, a real `checkout_token`; used that token against
+`POST /checkout/order` and got back a **real** Razorpay test-mode order
+(`order_TY5XIVgvXsTwt7`, ₹449, `key_id` starting `rzp_test_`); opened that
+real order's real Checkout widget in an actual (non-headless) browser and
+it rendered cleanly — correct price, "Test Mode" ribbon, a normal "Contact
+details" step — not a bot-detection stall, addressing the exact risk
+flagged before starting. Deliberately did **not** type a card
+number/OTP into the widget myself, matching this repo's own established
+convention (`scripts/demo_payment.py`, `docs/DECISIONS.md` 2026-09-02):
+scripting the widget's own form is the thing that risks tripping Razorpay's
+bot detection, not the fact that a payment happens — that last step needs
+to be a real human, in their own browser, on request.
+
+**Also**: hero primary CTA text changed "See it negotiate" → "Meet your
+agent" (per direct request, no functional change — still scrolls to
+`#live-feed`).
+
+**Verified throughout**: `pytest backend/tests -v` → 136/136 passing (122
+carried forward + 14 new: `test_checkout_quote.py`,
+`test_checkout_endpoints.py`, two additions to
+`test_negotiate_endpoint.py`). `npm run build` clean after every frontend
+change. No console errors across repeated headless-browser screenshot
+checks (hero, all four proof tabs, the "try it yourself" form, the audit
+log) at realistic viewport sizes.
+
+**Known gaps carried forward**:
+- `verification_failed`'s user-facing label is still the raw technical name
+  — deliberately left pending an explicit decision (see above), not an
+  oversight.
+- The real-Checkout flow's actual payment completion (typing a test card
+  and OTP into the widget) has only been verified up to the widget opening
+  correctly — the final manual click-through needs to be done and confirmed
+  by an actual person, by design (see above).
+- Nothing from this session is committed — see `git status`.
+
 ## 2026-09-04 — Day 4 Part 5: fixed the product-mismatch bug via `product_id` pinning; dashboard visual redesign (theme, header, proof tabs, intro)
 
 **Requested across the session**: fix the "try it yourself" product-mismatch

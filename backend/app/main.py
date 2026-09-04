@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 from functools import lru_cache
 
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -9,6 +11,8 @@ from pydantic import BaseModel, Field
 
 from backend.app.buyer_agent import BuyerAgent
 from backend.app.catalog import get_catalog
+from backend.app.certificate import build_certificate
+from backend.app.checkout_quote import InvalidQuoteToken, verify_quote_token
 from backend.app.config import get_settings
 from backend.app.fake_razorpay import FakeRazorpayClient
 from backend.app.llm import get_llm_client
@@ -139,6 +143,19 @@ class NegotiateRequest(BaseModel):
     # Optional: pins negotiation to this exact catalog product (e.g. from the
     # dashboard's product picker), bypassing goal_text keyword matching.
     product_id: str | None = Field(default=None, max_length=64)
+    # Optional shopper context -- see BuyerAgent.negotiate_and_purchase.
+    # `occasion` flavors the LLM phrasing prompt (never the negotiation math);
+    # `priority` genuinely changes the Zeuthen concession parameters and
+    # upsell receptiveness for this call.
+    occasion: str | None = Field(default=None, max_length=32)
+    priority: str | None = Field(default=None, max_length=32)
+    # True (default): this caller completes the purchase itself against the
+    # fake rail -- the scenario harness and any other backend-automated
+    # caller. False: a human-triggered flow (the dashboard's "try it
+    # yourself"/"surprise me") -- stop once a price is agreed and return a
+    # checkout_token instead of paying, so a real person can complete a real
+    # Razorpay Checkout via /checkout/order + /checkout/confirm.
+    auto_pay: bool = True
 
 
 def _outcome_to_dict(outcome) -> dict:
@@ -154,6 +171,8 @@ def _outcome_to_dict(outcome) -> dict:
         "transaction_id": outcome.transaction_id,
         "upsell_purchased": outcome.upsell_purchased,
         "upsell_product": outcome.upsell_product.id if outcome.upsell_product else None,
+        "payment_pending": outcome.payment_pending,
+        "checkout_token": outcome.checkout_token,
         "rounds": len(outcome.rounds),
         "trace": [
             {
@@ -174,8 +193,116 @@ def _outcome_to_dict(outcome) -> dict:
 @app.post("/negotiate")
 def negotiate(body: NegotiateRequest) -> dict:
     buyer = get_buyer_agent()
-    outcome = buyer.negotiate_and_purchase(body.goal_text, body.budget_paise, product_id=body.product_id)
+    outcome = buyer.negotiate_and_purchase(
+        body.goal_text,
+        body.budget_paise,
+        product_id=body.product_id,
+        occasion=body.occasion,
+        priority=body.priority,
+        auto_pay=body.auto_pay,
+    )
     return _outcome_to_dict(outcome)
+
+
+# -- checkout: real Razorpay Checkout for a human-triggered negotiation -----
+#
+# A negotiation run with auto_pay=False (see above) stops once a price is
+# agreed and hands back a `checkout_token` (checkout_quote.py) instead of
+# paying it itself. These two endpoints let a real person, in their own
+# browser, complete a real Razorpay test-mode Checkout for exactly that
+# price -- reusing `get_merchant_agent()` (the REAL Razorpay client, same
+# one GET /products/{id} already uses) and `MerchantAgent.handle_request`'s
+# existing `agreed_price_paise` override, rather than building a second
+# payment-verification path. The scenario harness and any other
+# backend-automated caller never sets auto_pay=False, so never touches this
+# at all -- see docs/DECISIONS.md.
+
+
+class CheckoutOrderRequest(BaseModel):
+    checkout_token: str
+
+
+@app.post("/checkout/order")
+def create_checkout_order(body: CheckoutOrderRequest) -> dict:
+    try:
+        product_id, price_paise = verify_quote_token(body.checkout_token)
+    except InvalidQuoteToken as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    agent = get_merchant_agent()
+    if agent.trust_guard.kill_switch.is_active:
+        raise HTTPException(status_code=503, detail="kill switch is active; no new transactions are being processed")
+
+    product = agent.catalog.get(product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail=f"unknown product '{product_id}'")
+
+    order = agent.razorpay_client.create_order(
+        price_paise, receipt=f"setu-negotiate-{product_id}", notes={"product_id": product_id}
+    )
+    settings = get_settings()
+    return {
+        "order_id": order["id"],
+        "amount_paise": price_paise,
+        "currency": "INR",
+        "key_id": settings.razorpay_key_id,
+        "product_id": product_id,
+        "product_name": product.name,
+    }
+
+
+class CheckoutConfirmRequest(BaseModel):
+    checkout_token: str
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+@app.post("/checkout/confirm")
+def confirm_checkout(request: Request, body: CheckoutConfirmRequest) -> dict:
+    try:
+        product_id, price_paise = verify_quote_token(body.checkout_token)
+    except InvalidQuoteToken as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    x_payment_header = base64.b64encode(
+        json.dumps(
+            {
+                "x402Version": 1,
+                "scheme": "razorpay-inr",
+                "network": "razorpay-test",
+                "resource": f"/products/{product_id}",
+                "payload": {
+                    "orderId": body.razorpay_order_id,
+                    "paymentId": body.razorpay_payment_id,
+                    "signature": body.razorpay_signature,
+                },
+            }
+        ).encode()
+    ).decode()
+
+    agent = get_merchant_agent()
+    result = agent.handle_request(
+        product_id, x_payment_header, agreed_price_paise=price_paise, caller_id=_caller_id(request)
+    )
+
+    # A signed, standalone-verifiable transaction certificate -- only for a
+    # purchase that actually completed (status 200, real transaction id).
+    # See certificate.py for exactly which checks this attests to and why.
+    body = result.body
+    if result.status_code == 200:
+        product = agent.catalog.get(product_id)
+        transaction_id = body.get("transaction")
+        if product is not None and transaction_id:
+            certificate = build_certificate(
+                issuer=get_trust_guard().issuer,
+                product=product,
+                price_paise=price_paise,
+                transaction_id=transaction_id,
+            )
+            body = {**body, "certificate": certificate}
+
+    return JSONResponse(status_code=result.status_code, content=body, headers=result.headers)
 
 
 # -- admin: kill switch ---------------------------------------------------

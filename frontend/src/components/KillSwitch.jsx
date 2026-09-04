@@ -124,7 +124,7 @@ export default function KillSwitch() {
           <div className="text-xs font-mono uppercase tracking-wide text-parchment-500">Admin controls</div>
           <input
             type="password"
-            placeholder="X-ADMIN-KEY"
+            placeholder="Enter your admin key"
             value={adminKey}
             onChange={(e) => setAdminKey(e.target.value)}
             className="w-full rounded-md border border-ink-700 bg-ink-950 px-4 py-2.5 text-sm font-mono text-parchment-100 placeholder:text-parchment-500 focus:outline-none focus:border-gold-500/50"

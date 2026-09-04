@@ -3,6 +3,7 @@ from backend.app.bargaining.zeuthen import (
     MerchantParty,
     RoundResult,
     buyer_utility,
+    clamp01,
     merchant_utility,
     run_zeuthen_negotiation,
 )
@@ -12,6 +13,7 @@ __all__ = [
     "MerchantParty",
     "RoundResult",
     "buyer_utility",
+    "clamp01",
     "merchant_utility",
     "run_zeuthen_negotiation",
 ]

@@ -155,6 +155,14 @@ class CredentialIssuer:
             return False, "credential issuer signature is invalid"
         return True, None
 
+    def sign_payload(self, payload: dict) -> str:
+        """Signs any JSON-serializable dict with the issuer's private key,
+        using the same canonical-JSON convention as credential signing (see
+        `_canonical`). Used for anything else the platform notarizes with
+        its trust-root key -- currently, transaction certificates (see
+        certificate.py)."""
+        return _b64(self._private_key.sign(_canonical(payload)))
+
 
 class SignedRequest(BaseModel):
     """A purchase/negotiation request from one agent to another, signed by

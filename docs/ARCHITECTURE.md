@@ -2,11 +2,36 @@
 
 > Status: Foundation + Merchant Agent + Buyer Agent + Zeuthen bargaining +
 > TrustGuard (kill switch, signature/credential/replay, velocity, daily
-> spend, policy bounds) + public dashboard, all live-deployed and
-> real-data-verified. See `BUILD_LOG.md` (Day 4 Part 4) for the dashboard's
-> interactive negotiation form, live chat replay, and hero/nav rework, and
-> Part 3 for the dashboard's original build and its one open item (a small
-> additive backend change awaiting deploy).
+> spend, policy bounds) + public dashboard + real Razorpay Checkout for
+> human-triggered deals + signed transaction certificates, all live-deployed
+> (frontend/CI aside — see `BUILD_LOG.md` for what's committed) and
+> real-data-verified, including a real human click-through of both the
+> Checkout flow and the certificate download (2026-09-05, Day 6). See
+> `BUILD_LOG.md` (Day 4 Part 4) for the dashboard's interactive negotiation
+> form, live chat replay, and hero/nav rework, and Part 3 for the
+> dashboard's original build.
+
+## Architecture at a glance
+
+```mermaid
+flowchart TD
+    You(["You"]) --> UI["Dashboard<br/>React · Vercel"]
+    UI -->|"pick a product + budget"| Buyer["Buyer Agent"]
+
+    Buyer <-->|"negotiate"| Merchant["Merchant Agent"]
+    Buyer -.->|"price decided by"| Zeuthen["Zeuthen Math<br/>deterministic, no LLM"]
+    Buyer -.->|"LLM only writes<br/>the sentence"| Gemini[("Gemini")]
+
+    Buyer -->|"deal reached"| Trust{{"TrustGuard<br/>8 safety checks"}}
+    Trust -->|"approved"| Razorpay[("Razorpay<br/>test-mode payment")]
+    Razorpay --> Cert["Signed Certificate<br/>Ed25519"]
+    Cert -->|"downloaded from"| UI
+    Cert -.->|"verified offline by,<br/>no server needed"| You
+```
+
+Read it as one sentence: **you** pick a product and budget in the **dashboard**, your **Buyer Agent** negotiates against the **Merchant Agent** using deterministic math (the LLM only phrases the sentence, never sets the price), and once a deal clears **TrustGuard**'s checks, a real **Razorpay** test-mode payment happens and you get back a **signed certificate** you can verify yourself, offline, without trusting this backend at all.
+
+The sections below go one level deeper — the actual function-call sequence, the raw HTTP data flow, and where each piece is deployed.
 
 ## System overview
 
@@ -47,9 +72,20 @@
   `docs/BARGAINING.md` for the full writeup.
 - **Fake Razorpay client**: `backend/app/fake_razorpay.py` — in-memory
   order/payment simulation for unattended automated flows (negotiation loop,
-  tests). The real `RazorpayClient` (Checkout widget, manual click-through)
-  is reserved for the one-off live-integration demo (`make demo`) — see
-  `docs/DECISIONS.md`, 2026-09-02.
+  tests). The real `RazorpayClient` also backs the dashboard's
+  human-triggered checkout (`auto_pay=false`, `POST /checkout/order` +
+  `POST /checkout/confirm`) and the one-off live-integration demo
+  (`make demo`) — see `docs/DECISIONS.md`, 2026-09-02 and 2026-09-05.
+- **Checkout tokens**: `backend/app/checkout_quote.py` — a short-lived,
+  HMAC-signed token binding `(product_id, agreed_price_paise)` the moment a
+  human-triggered negotiation actually closes, so `/checkout/order` and
+  `/checkout/confirm` can never be pointed at a tampered price.
+- **Transaction certificates**: `backend/app/certificate.py` — once a
+  human-triggered checkout completes, a small Ed25519-signed certificate
+  (product, price, transaction id, timestamp, trust checks passed) is
+  returned for download, verifiable completely offline via
+  `verify_certificate.py` (repo root) — see `docs/DECISIONS.md`,
+  2026-09-05.
 - **LLM call logging**: `backend/app/llm/logging_client.py` — wraps any
   `LLMClient`, records latency + estimated token cost per call.
 - **Policy/trust layer**: `backend/app/trust/` — `TrustGuard`

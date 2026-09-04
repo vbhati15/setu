@@ -2,6 +2,174 @@
 
 Running log of non-obvious decisions and why they were made. Newest first.
 
+## 2026-09-05 — Negotiation-round phrasing calls parallelized: ~24 sequential Gemini calls to ~1
+
+"Start negotiation" could take close to a minute. Root cause: a tight-budget
+negotiation makes up to `negotiation_max_rounds` (12) × 2 live Gemini
+phrasing calls, and `BuyerAgent._render_trace` made them one at a time. By
+the time that function runs, `run_zeuthen_negotiation` has already produced
+every round's final numbers — phrasing never feeds back into the math (see
+`docs/BARGAINING.md`) — so every one of those ~24 calls is independent of
+every other. `_render_trace` now submits all of them to a
+`ThreadPoolExecutor` at once and reassembles the trace in original round
+order afterward. Turns wall-clock cost from "sum of ~24 calls" into
+"roughly the slowest single call." A negotiation's fallback phrasing path
+(used when an individual call fails or times out) is untouched — a
+rate-limited call under load still degrades to the templated sentence, same
+as before, just now possibly for several rounds in parallel rather than one
+that stalls everything behind it.
+
+## 2026-09-05 — Found and fixed: a stale local backend process was silently serving pre-`auto_pay` code
+
+While live-testing the certificate feature, a real multi-round negotiation
+converged to a genuine deal but the result card showed "Couldn't be
+completed" instead of a checkout button. `frontend/src/lib/rules.js`'s
+`classifyOutcome` only reaches that verdict when the backend's `reason` text
+contains "rejected by trust layer" — text the *current* `_negotiate` code
+cannot produce when `auto_pay=false`, since it returns a `checkout_token`
+before ever calling `_pay_and_collect`/`TrustGuard` (see the "Two payment
+rails" entry below). The only way to see that text is a backend still
+running code from before the `auto_pay`/checkout-token feature existed,
+which pays immediately regardless of the request field — and, having been
+running since well before this session's edits, its shared `BuyerAgent`
+singleton had also accumulated enough local-testing purchases to trip
+`velocity`/`daily_spend` on top of that.
+
+**Not a code bug — a stale dev-process trap worth naming**: `uvicorn --reload`
+watches file changes, but a process started before a large batch of backend
+edits (or one whose reloader silently died) keeps serving the old module
+indefinitely with no visible warning; the frontend (Vite HMR) reloads
+instantly, so only the backend half of the stack goes stale, and the
+symptom (a plausible-looking trust-layer rejection) looks like a real logic
+bug rather than a stale-process problem. Fixed by killing the stale process
+and starting a fresh one; confirmed via a direct `curl POST /negotiate` that
+the new process correctly returns `payment_pending: true` + a real
+`checkout_token`. No code changed.
+
+## 2026-09-05 — Signed transaction certificates: reused the existing Ed25519 issuer key, didn't mint new crypto
+
+When a human-triggered checkout actually completes (`POST /checkout/confirm`
+returns 200 — see the entry directly below this one for that flow), the
+backend now also returns a small `certificate` object: product, agreed
+price, transaction id, timestamp, and the list of trust checks that
+transaction actually passed, all signed with Ed25519
+(`backend/app/certificate.py`). The dashboard's result card gets a
+"Download verification certificate" button that saves this JSON verbatim.
+
+**Why this is worth doing at all:** every other "proof" in this dashboard
+(the audit log, the decision trace) is us describing our own trust layer.
+A certificate the visitor can download and check *without calling our API
+again* is a different, stronger claim — the recipient never has to trust
+this backend at all, only basic Ed25519 math.
+
+**Key reuse, not new crypto:** the certificate is signed with
+`trust_guard.issuer`'s keypair — the exact same `CredentialIssuer` that
+already signs every `AgentCredential` (see `backend/app/trust/identity.py`).
+`CredentialIssuer.sign_payload` is a two-line addition reusing the same
+canonical-JSON-then-Ed25519-sign convention `issue()` already uses; no new
+key generation, storage, or algorithm choice was needed.
+
+**Why the checklist isn't literally `SIGNED_PIPELINE`:** the frontend's
+Decision Trace panel (`frontend/src/lib/rules.js`) shows the *signed-agent*
+8-check pipeline (`TrustGuard.authorize_purchase`) — kill switch, request
+signature, replay, credential scope, velocity, daily spend, spend cap,
+category. But a human-triggered checkout never goes through that path; it
+runs `authorize_anonymous_purchase` (no signed agent request exists to
+check a signature/replay/credential-scope against — see
+`backend/app/trust/guard.py`) plus the Razorpay payment-verification checks
+in `MerchantAgent._verify_payment`. Reusing `SIGNED_PIPELINE`'s labels
+verbatim would have claimed checks that never ran for this transaction.
+`certificate.py`'s `TRUST_CHECKS_PASSED` instead lists, in real execution
+order, exactly the checks `POST /checkout/confirm` actually runs — still
+worded the same way as the Decision Trace panel, just honest about which
+ones apply here.
+
+**Standalone verification, deliberately outside the backend package:**
+`verify_certificate.py` lives at the repo root and only imports `cryptography`
+(already in `requirements.txt`) — no import of `backend.app`, no network
+call. It recomputes the same canonical JSON encoding the signer used,
+verifies the Ed25519 signature with the certificate's own embedded
+*public* key, and prints a plain valid/invalid verdict. See
+`README.md` for the exact command.
+
+**What this does and doesn't prove:** a valid signature proves the JSON is
+byte-for-byte what `setu-platform`'s issuer key signed — tampering with
+any field (price, product, transaction id, even one character) breaks
+verification, which is the property that matters for "is this receipt
+real." It does not, on its own, prove that key belongs to a trustworthy
+Setu instance (there's no CA chain here) — same self-signed-cert caveat as
+the credentials this reuses. Scoped deliberately to the checkout-confirm
+flow only (the one path with a downloadable result card); the scenario
+harness's `auto_pay=true` path was left alone.
+
+**Closed with a real end-to-end run, not just the code-path demo above**:
+after fixing the stale-backend issue (see the entry above), an actual
+person completed a real Razorpay test-mode Checkout in their own browser,
+downloaded the certificate the button produced from their actual Downloads
+folder, and ran `verify_certificate.py` against that exact file:
+
+```
+Transaction ID:  pay_TY6AQ50iNNS6nZ
+Product:         Mechanical Keyboard — Hot-swap, 65% (mechanical-keyboard-65)
+Agreed price:    ₹3,499.00
+✓ Valid — this certificate has not been altered
+```
+
+Then, on a copy of that same real (not synthetic) file with one digit
+changed:
+
+```
+✗ Invalid — signature does not match
+```
+
+## 2026-09-05 — Two payment rails, split by who's actually clicking: fake for automation, real Razorpay Checkout for a human
+
+`POST /negotiate` now has an `auto_pay` field (default `true`) that decides
+which of two genuinely different payment paths a completed negotiation
+takes:
+
+- **`auto_pay=true` (default) — the fake rail, unchanged.** The scenario
+  harness (`backend/app/scripts/scenario_harness.py`) and any other
+  backend-automated caller never sets this field, so `BuyerAgent` keeps
+  paying itself against `FakeRazorpayClient` exactly as before (see the
+  2026-09-02 entry below on why: an unattended loop can't click through
+  Razorpay's real Checkout widget without tripping its own bot detection).
+  Nothing about this path changed.
+- **`auto_pay=false` — real Razorpay test-mode Checkout, only for a human.**
+  The dashboard's "try it yourself" and "surprise me" flows always send
+  `auto_pay: false`. `BuyerAgent.negotiate_and_purchase` still runs the real
+  Zeuthen negotiation (or accepts list price) exactly as before, but stops
+  *before* paying: it returns `payment_pending: true` and a short-lived,
+  HMAC-signed `checkout_token` (`backend/app/checkout_quote.py`) binding the
+  exact `(product_id, agreed_price_paise)` the negotiation actually closed
+  at. The frontend then calls `POST /checkout/order` (creates a real
+  Razorpay order for that exact amount) and opens the real Checkout widget
+  in the visitor's own browser; on success it calls `POST /checkout/confirm`
+  with the widget's own `razorpay_order_id`/`razorpay_payment_id`/
+  `razorpay_signature`, which is verified through the *same*
+  `MerchantAgent.handle_request` / `agreed_price_paise` code path
+  `GET /products/{id}` already uses — no new payment-verification logic, no
+  parallel trust-checking path to keep in sync.
+
+**Why the token, not a client-supplied price:** if the frontend could just
+tell `/checkout/order` "create an order for this amount," a tampered
+request could get a real (if test-mode) order created for any price. The
+token is signed server-side at the moment the negotiation actually agreed
+to a price, and `/checkout/order`/`/checkout/confirm` both derive
+`product_id`/`price_paise` from the token itself — never from separate
+request fields — so the real order can never be for anything other than
+what was actually negotiated.
+
+**Why this doesn't reopen the bot-detection problem the fake rail exists
+to avoid:** the thing that gets blocked is a *script* driving the Checkout
+widget's own form (typing a card number, clicking through OTP) — not a real
+person doing that themselves. `auto_pay=false` hands control to an actual
+human clicking a real "Complete your purchase" button in their own browser;
+nothing on our side scripts the widget itself. This is the same distinction
+`backend/app/scripts/demo_payment.py` already relies on (real order, real
+Checkout widget, one manual human click-through) — this feature is that
+same pattern, reached through the dashboard instead of a local script.
+
 ## 2026-09-04 — Product-mismatch bug: routed around via `product_id`, not fixed at the root
 
 The entry directly below this one ("USB-C Hub → Cable Organizer Kit

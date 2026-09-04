@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { OUTCOME_LABELS } from "../../lib/rules";
 
 const COLORS = {
   compliant: "#e6b95a",
@@ -6,14 +7,6 @@ const COLORS = {
   rejected: "#c8524a",
   graceful_no_match: "#5c5449",
   failed_verification: "#3a322a",
-};
-
-const LABELS = {
-  compliant: "Completed successfully",
-  escalated: "Flagged for review",
-  rejected: "Blocked automatically",
-  graceful_no_match: "No good deal found",
-  failed_verification: "verification failed",
 };
 
 // Real donut of the harness's own outcome counts -- radius per segment is
@@ -63,7 +56,7 @@ export default function OutcomeDonut({ outcomes }) {
           <div key={s.key}>
             <div className="flex items-center gap-3 text-sm font-mono">
               <span className="w-3 h-3 rounded-full inline-block" style={{ background: COLORS[s.key] }} />
-              <span className="text-parchment-300">{LABELS[s.key] || s.key}</span>
+              <span className="text-parchment-300">{OUTCOME_LABELS[s.key] || s.key}</span>
               <span className="text-parchment-500">
                 {s.value} ({Math.round(s.frac * 100)}%)
               </span>

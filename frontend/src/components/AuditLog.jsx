@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScrollText } from "lucide-react";
+import { OUTCOME_LABELS, RULE_LABELS, formatDuration, describeEndpoint, orderNumber } from "../lib/rules";
 
 export default function AuditLog({ records }) {
   const [filter, setFilter] = useState("all");
@@ -14,55 +15,54 @@ export default function AuditLog({ records }) {
         Audit log
       </h2>
       <p className="text-sm text-parchment-400 leading-relaxed mb-4 max-w-3xl">
-        Every HTTP call from the scenario harness run, in order — real transaction IDs, real timestamps,
-        real latencies.
+        Every single test, in the order it happened — with real order numbers, real timestamps, and how
+        long each one took.
       </p>
 
       <div className="flex flex-wrap gap-2 mb-5">
         <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
-          all ({records.length})
+          All ({records.length})
         </FilterChip>
         {outcomes.map((o) => (
           <FilterChip key={o} active={filter === o} onClick={() => setFilter(o)}>
-            {o} ({records.filter((r) => r.outcome === o).length})
+            {OUTCOME_LABELS[o] || o} ({records.filter((r) => r.outcome === o).length})
           </FilterChip>
         ))}
       </div>
 
       <div className="rounded-lg border border-ink-700 bg-ink-950 max-h-[380px] overflow-y-auto font-mono text-sm">
         <AnimatePresence initial={false}>
-          {filtered.map((r, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2, delay: Math.min(i * 0.02, 0.3) }}
-              className="px-4 py-2 border-b border-ink-800 last:border-0 hover:bg-ink-900/50 flex flex-wrap gap-x-3 gap-y-1"
-            >
-              <span className="text-parchment-500">{new Date(r.timestamp * 1000).toLocaleTimeString()}</span>
-              <span className="text-parchment-300">{r.method}</span>
-              <span className="text-parchment-100">{r.url}</span>
-              <span
-                className={
-                  r.outcome === "compliant"
-                    ? "text-gold-400"
-                    : r.outcome?.startsWith("escalated")
-                    ? "text-amber-500"
-                    : r.outcome?.startsWith("rejected")
-                    ? "text-red-400"
-                    : "text-parchment-500"
-                }
+          {filtered.map((r, i) => {
+            const order = orderNumber(r.response_body?.transaction_id);
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2, delay: Math.min(i * 0.02, 0.3) }}
+                className="px-4 py-2 border-b border-ink-800 last:border-0 hover:bg-ink-900/50 flex flex-wrap gap-x-3 gap-y-1"
               >
-                {r.outcome}
-              </span>
-              {r.rule && <span className="text-parchment-500">rule={r.rule}</span>}
-              <span className="text-parchment-500">{r.response_status}</span>
-              <span className="text-parchment-500">{r.latency_ms}ms</span>
-              {r.response_body?.transaction_id && (
-                <span className="text-parchment-300">tx={r.response_body.transaction_id}</span>
-              )}
-            </motion.div>
-          ))}
+                <span className="text-parchment-500">{new Date(r.timestamp * 1000).toLocaleTimeString()}</span>
+                <span className="text-parchment-300">{describeEndpoint(r.method, r.url)}</span>
+                <span
+                  className={
+                    r.outcome === "compliant"
+                      ? "text-gold-400"
+                      : r.outcome === "escalated"
+                      ? "text-amber-500"
+                      : r.outcome === "rejected"
+                      ? "text-red-400"
+                      : "text-parchment-500"
+                  }
+                >
+                  {OUTCOME_LABELS[r.outcome] || r.outcome}
+                </span>
+                {r.rule && <span className="text-parchment-500">{RULE_LABELS[r.rule] || r.rule}</span>}
+                <span className="text-parchment-500">{formatDuration(r.latency_ms)}</span>
+                {order && <span className="text-parchment-300">Order #{order}</span>}
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
       </div>
     </div>

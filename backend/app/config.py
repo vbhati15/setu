@@ -29,9 +29,20 @@ class Settings(BaseSettings):
     razorpay_key_id: str = "rzp_test_placeholder"
     razorpay_key_secret: str = "placeholder_secret"
 
+    # HMAC key signing the short-lived "checkout quote" tokens handed to the
+    # frontend after a human-triggered negotiation closes (see
+    # checkout_quote.py) -- binds a real Razorpay order/payment to the exact
+    # product + negotiated price the Buyer Agent actually agreed to, so a
+    # tampered client-supplied price can never reach Razorpay.
+    checkout_quote_secret: str = "placeholder-checkout-quote-secret"
+    checkout_quote_ttl_seconds: float = 600.0
+
     # --- Gemini ---
     gemini_api_key: str = "placeholder_gemini_key"
     gemini_model: str = "gemini-flash-lite-latest"
+    # Per-call timeout so one stalled/rate-limited phrasing call can't hang
+    # an entire multi-round negotiation -- see llm/gemini_client.py.
+    gemini_timeout_ms: int = 20_000
 
     # --- Database ---
     database_url: str = "postgresql://setu:setu@localhost:5432/setu"

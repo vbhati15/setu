@@ -1,17 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, X, MinusCircle, GitBranch } from "lucide-react";
-import { classifyOutcome, buildChecklist, paise } from "../lib/rules";
-
-function formatDuration(ms) {
-  if (ms === null || ms === undefined) return "--";
-  if (ms < 1000) return "under a second";
-  const totalSeconds = Math.round(ms / 1000);
-  if (totalSeconds < 60) return `${totalSeconds} second${totalSeconds === 1 ? "" : "s"}`;
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}m ${seconds}s`;
-}
+import { classifyOutcome, buildChecklist, paise, formatDuration } from "../lib/rules";
 
 // A plain-language stand-in for the harness's own scenario description
 // (which is internal shorthand like "cable-organizer-kit @ budget=44900

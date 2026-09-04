@@ -72,3 +72,52 @@ export function paise(n) {
   if (n === null || n === undefined) return "--";
   return `₹${(n / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
+
+export function formatDuration(ms) {
+  if (ms === null || ms === undefined) return "--";
+  if (ms < 1000) return "under a second";
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds} second${totalSeconds === 1 ? "" : "s"}`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
+// Single source of truth for how each harness outcome reads to a visitor --
+// shared by the outcome donut, the stat boxes, and the audit log so the same
+// category never ends up worded three different ways.
+export const OUTCOME_LABELS = {
+  compliant: "Completed successfully",
+  escalated: "Flagged for review",
+  rejected: "Blocked automatically",
+  graceful_no_match: "No good deal found",
+  failed_verification: "verification failed",
+};
+
+// Same idea for the named TrustGuard/policy rules a blocked or escalated
+// attempt can cite.
+export const RULE_LABELS = {
+  daily_spend: "Tried to spend more than the daily limit allows",
+  credential_scope: "Tried to act outside what it's authorized to do",
+  velocity: "velocity limit breach",
+  spend_cap: "per-transaction spend cap breach",
+  category: "category-policy violation",
+  kill_switch: "kill-switch block",
+  idempotency: "duplicate-charge attempt caught",
+};
+
+// Plain-language stand-in for a raw "POST /negotiate" / "GET
+// /products/{id}" call -- the only two endpoints the harness ever hits.
+export function describeEndpoint(method, url) {
+  if (url?.startsWith("/negotiate")) return "Negotiation";
+  if (url?.startsWith("/products/")) return "Product purchase";
+  return `${method} ${url}`;
+}
+
+// "pay_fake_22" -> "22" -- the harness's placeholder transaction ids aren't
+// meaningful to a visitor beyond "which order was this."
+export function orderNumber(transactionId) {
+  if (!transactionId) return null;
+  const m = /(\d+)\s*$/.exec(transactionId);
+  return m ? m[1] : transactionId;
+}

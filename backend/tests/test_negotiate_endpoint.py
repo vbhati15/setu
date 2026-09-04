@@ -76,6 +76,38 @@ def test_negotiate_blocked_by_global_kill_switch(monkeypatch):
     assert resp.json()["success"] is True
 
 
+def test_negotiate_auto_pay_false_stops_short_of_payment_and_returns_checkout_token(monkeypatch):
+    """The human-triggered flow (dashboard sends auto_pay=false) must not
+    touch the fake rail at all -- see docs/DECISIONS.md, 2026-09-05."""
+    _use_fake_llm(monkeypatch)
+    _deactivate_kill_switch()
+    resp = client.post(
+        "/negotiate",
+        json={"goal_text": "mechanical keyboard hot-swap", "budget_paise": 500_000, "auto_pay": False},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["payment_pending"] is True
+    assert body["transaction_id"] is None  # nothing was actually charged
+    assert body["checkout_token"]
+
+
+def test_negotiate_default_auto_pay_is_unaffected_by_the_checkout_token_field(monkeypatch):
+    """Omitting auto_pay entirely (every existing caller -- the harness
+    included) must behave exactly as before: paid immediately, no token."""
+    _use_fake_llm(monkeypatch)
+    _deactivate_kill_switch()
+    resp = client.post(
+        "/negotiate", json={"goal_text": "mechanical keyboard hot-swap", "budget_paise": 500_000}
+    )
+    body = resp.json()
+    assert body["success"] is True
+    assert body["payment_pending"] is False
+    assert body["checkout_token"] is None
+    assert body["transaction_id"] is not None
+
+
 def test_negotiate_over_credential_scope_budget_is_rejected_by_trust_guard(monkeypatch):
     """Budget far beyond the Buyer Agent's own issued credential scope --
     proves the full signed TrustGuard.authorize_purchase path (not just the
