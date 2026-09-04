@@ -1,15 +1,20 @@
 # Screenshots
 
-Drop the real images here with these exact filenames so the root `README.md`
-picks them up automatically (it already references these paths):
+Referenced directly by the root `README.md`:
 
-| Filename | What to capture |
+| Filename | What it shows |
 |---|---|
-| `hero.png` | The dashboard's hero section on first load |
-| `negotiation-chat.png` | A completed negotiation — the two-party chat replay plus the result card |
-| `proof-tabs.png` | The Decision Trace / Test Results / Audit Log tab area |
-| `certificate-button.png` | The result card's "Download verification certificate" button and copy, after a deal closes |
+| `setu.gif` | The dashboard in motion — hero + live negotiation feed |
+| `negotiation.png` | "Try it yourself" — product/budget picker + the risk-of-conflict chart converging |
+| `negotiation-1.png` | The negotiation replayed as a two-party chat, ending in a closed deal |
+| `results.png` | The Test Results tab — real scenario-harness numbers |
+| `certificate.png` | The result card's "Download verification certificate" button, after a real completed payment |
 
-PNG or JPG, ~1200–1600px wide is plenty — GitHub scales them down in the
-README anyway. Once added, remove the `<!-- TODO -->` comment directly above
-each corresponding `![...]` line in the root `README.md`.
+PNG/GIF, ~1200–1600px wide is plenty — GitHub scales them down in the README
+anyway. Keep GIFs trimmed and compressed (see the tip below) — a full-length
+screen recording gets large fast.
+
+```bash
+# Shrink a raw screen recording into a lightweight, README-sized GIF
+ffmpeg -i raw-recording.mov -vf "fps=12,scale=900:-1" -loop 0 setu.gif
+```

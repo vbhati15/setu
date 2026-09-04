@@ -15,8 +15,7 @@
 
 </div>
 
-<!-- TODO: replace with a real screenshot or short GIF of the hero + live negotiation feed -->
-![Setu dashboard — hero and live negotiation feed](docs/screenshots/hero.png)
+![Setu dashboard — hero and live negotiation feed](docs/screenshots/setu.gif)
 
 ---
 
@@ -40,15 +39,15 @@ Most "AI agent commerce" demos either fake the negotiation (an LLM freestyles a 
 
 ## See it live
 
-<!-- TODO: replace with a real screenshot of a completed negotiation chat + result card -->
-![Live two-party negotiation chat, paced by real LLM latency](docs/screenshots/negotiation-chat.png)
+![Try it yourself — pick a product and budget, watch the risk-of-conflict chart converge](docs/screenshots/negotiation.png)
 
 **[setu-alpha-beige.vercel.app](https://setu-alpha-beige.vercel.app)** — pick a product and a budget (or hit "Surprise me"), and watch your own Buyer Agent negotiate against Setu's Merchant Agent in real time: a real two-party chat paced by each message's actual LLM latency, a live Zeuthen risk-of-conflict chart, and — once a deal closes — a real Razorpay test-mode Checkout you can complete yourself.
 
+![The negotiation replayed as a two-party chat, ending in a closed deal](docs/screenshots/negotiation-1.png)
+
 The dashboard also has three other tabs, all built from real data, nothing illustrative:
 
-<!-- TODO: replace with a real screenshot of the Decision Trace / Test Results / Audit Log tabs -->
-![Decision trace, test results, and audit log tabs](docs/screenshots/proof-tabs.png)
+![Test results tab — real numbers from the scenario harness, run against the live production API](docs/screenshots/results.png)
 
 - **Decision trace** — the exact 8-step TrustGuard checklist for a given outcome, reconstructed from the backend's own response, never fabricated.
 - **Test results** — real numbers from a 22-scenario, 37-call test harness run against the live production API (`backend/app/scripts/scenario_harness.py`), including deliberate rule-breach attempts.
@@ -57,8 +56,7 @@ The dashboard also has three other tabs, all built from real data, nothing illus
 
 ## Verification certificates
 
-<!-- TODO: replace with a real screenshot of the "Download verification certificate" button + copy on the result card -->
-![Download verification certificate button on the result card](docs/screenshots/certificate-button.png)
+![Download verification certificate button on the result card, after a real completed payment](docs/screenshots/certificate.png)
 
 When a negotiated purchase actually completes, the result card offers **"Download verification certificate"** — a small JSON file containing the product, agreed price, transaction id, timestamp, and exactly which trust checks that specific transaction passed, signed with the same Ed25519 key the backend already uses to sign agent credentials (see [`docs/DECISIONS.md`](docs/DECISIONS.md), 2026-09-05).
 
