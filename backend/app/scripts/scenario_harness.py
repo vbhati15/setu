@@ -105,11 +105,11 @@ class LogRecord:
 
 class Harness:
     def __init__(self) -> None:
-        # Tight-budget scenarios can run up to negotiation_max_rounds (12)
+        # Tight-budget scenarios can run up to negotiation_max_rounds (16)
         # real Zeuthen rounds, each phrased by two live Gemini calls -- a
         # generous read timeout is needed so a slow-but-genuine negotiation
         # isn't mistaken for a hang.
-        self.client = httpx.Client(base_url=BASE_URL, timeout=httpx.Timeout(15.0, read=240.0))
+        self.client = httpx.Client(base_url=BASE_URL, timeout=httpx.Timeout(15.0, read=320.0))
         self.records: list[LogRecord] = []
         self._attempt_timestamps: list[float] = []  # local mirror of the server's velocity window
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)

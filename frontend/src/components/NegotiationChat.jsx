@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, ShieldCheck } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, ShieldCheck, ScrollText } from "lucide-react";
 import { groupRoundsFromTrace } from "../lib/harness";
 import { classifyOutcome, paise } from "../lib/rules";
 import CheckoutButton from "./CheckoutButton";
+import CertificateView from "./CertificateView";
 
 // Triggers a browser download of the signed certificate JSON exactly as the
 // backend produced it -- nothing reformatted or re-serialized here, so the
@@ -146,6 +147,7 @@ function plainOutcomeMessage(outcome, classified) {
 
 function SummaryCard({ outcome }) {
   const [certificate, setCertificate] = useState(null);
+  const [showCertificate, setShowCertificate] = useState(false);
   const classified = classifyOutcome(outcome);
   const success = outcome?.success === true;
   const Icon = success ? CheckCircle2 : classified.verdict === "escalated" ? AlertTriangle : classified.verdict === "rejected" ? XCircle : HelpCircle;
@@ -181,18 +183,30 @@ function SummaryCard({ outcome }) {
       )}
       {certificate && (
         <div className="mt-3 pt-3 border-t border-white/10">
-          <button
-            onClick={() => downloadCertificate(certificate)}
-            className="inline-flex items-center gap-2 rounded-md border border-gold-500/40 bg-gold-500/10 px-3 py-1.5 text-xs font-semibold text-gold-300 hover:bg-gold-500/20 transition-colors"
-          >
-            <ShieldCheck size={14} />
-            Download verification certificate
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setShowCertificate(true)}
+              className="inline-flex items-center gap-2 rounded-md border border-gold-500/40 bg-gold-500/10 px-3 py-1.5 text-xs font-semibold text-gold-300 hover:bg-gold-500/20 transition-colors"
+            >
+              <ScrollText size={14} />
+              View certificate
+            </button>
+            <button
+              onClick={() => downloadCertificate(certificate)}
+              className="inline-flex items-center gap-2 rounded-md border border-gold-500/40 bg-gold-500/10 px-3 py-1.5 text-xs font-semibold text-gold-300 hover:bg-gold-500/20 transition-colors"
+            >
+              <ShieldCheck size={14} />
+              Download verification certificate
+            </button>
+          </div>
           <p className="mt-2 text-xs text-parchment-500 leading-relaxed">
             This isn't just a receipt — it's mathematically provable. Download it, and verify it
             yourself, without ever trusting our server.
           </p>
         </div>
+      )}
+      {showCertificate && (
+        <CertificateView certificate={certificate} onClose={() => setShowCertificate(false)} />
       )}
     </motion.div>
   );

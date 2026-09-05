@@ -17,7 +17,7 @@ class GeminiClient(LLMClient):
     def __init__(self) -> None:
         settings = get_settings()
         # Without an explicit timeout, a single stalled/rate-limited call has
-        # no upper bound -- and a tight-budget negotiation makes up to 24 of
+        # no upper bound -- and a tight-budget negotiation makes up to 32 of
         # these calls sequentially (2 per round, up to negotiation_max_rounds
         # rounds), so one slow call can stall the whole negotiation well past
         # what BuyerAgent's own fallback phrasing (see agent.py `_phrase`)

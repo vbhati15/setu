@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     # Merchant's reservation price (won't sell below this) as a fraction of catalog list price.
     # A single global fraction, not a per-product floor -- documented simplification, see BARGAINING.md.
     merchant_min_price_factor: float = 0.75
-    negotiation_max_rounds: int = 12
+    negotiation_max_rounds: int = 16
     # Floor on concession size per round (as a fraction of the current gap) so a
     # near-zero risk value can't stall the negotiation indefinitely within max_rounds.
     negotiation_min_concession_fraction: float = 0.15
