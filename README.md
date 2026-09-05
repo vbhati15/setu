@@ -239,6 +239,123 @@ flowchart TD
 - **A black-box scenario harness** (`backend/app/scripts/scenario_harness.py`) ran 22 scenarios, 37 real calls, against the **live production API** — comfortable purchases, tight-budget negotiations, no-match failures, deliberate rule-breaks. Results in `backend/app/scripts/harness_results/*.jsonl`, surfaced live in the Test Results/Audit Log tabs.
 - **Every trust rule independently fired against production**, real evidence attached, not just a unit-test assertion. Transcripts in [`BUILD_LOG.md`](BUILD_LOG.md); how to reproduce in [`docs/TESTING.md`](docs/TESTING.md).
 
+## Key implementation
+
+Real code, trimmed to the essential lines — not a paraphrase. Full files linked in each caption.
+
+**1. Zeuthen risk-of-conflict** — how much a party would lose by caving fully to the other side's offer right now; whoever's risk is lower concedes. → [`bargaining/zeuthen.py`](backend/app/bargaining/zeuthen.py)
+
+```python
+def risk(own_utility_at_own_offer: float, own_utility_at_opponent_offer: float) -> float:
+    if own_utility_at_own_offer <= 0:
+        return 1.0
+    return clamp01((own_utility_at_own_offer - own_utility_at_opponent_offer) / own_utility_at_own_offer)
+
+# ... each round:
+risk_b = buyer.risk(buyer_offer, merchant_offer)
+risk_m = merchant.risk(merchant_offer, buyer_offer)
+conceder = "buyer" if risk_b <= risk_m else "merchant"
+```
+This runs to completion before the LLM is ever called — the model phrases the number this produces, it never sees the risk values or gets a vote.
+
+**2. TrustGuard's short-circuit pipeline** — 8 checks in a fixed order, first failure stops everything. → [`trust/guard.py`](backend/app/trust/guard.py)
+
+```python
+def authorize_purchase(self, request: SignedRequest, *, category: str) -> AuthorizationResult:
+    if self.kill_switch.is_active:
+        return self._reject(request.agent_id, "kill_switch", "...")
+
+    ok, reason = self._verify_signature_and_credential(request)
+    if not ok:
+        return self._reject(request.agent_id, "signature", reason)
+
+    ok, reason = self._check_freshness_and_replay(request)
+    if not ok:
+        return self._reject(request.agent_id, "replay", reason)
+
+    price_paise = int(request.payload.get("price_paise", 0))
+    ok, reason = self._check_credential_scope(request, price_paise=price_paise, category=category)
+    if not ok:
+        return self._reject(request.agent_id, "credential_scope", reason)
+
+    return self._authorize_common(request.agent_id, request.idempotency_key, price_paise, category)
+```
+Each check is a plain early return — no partial approvals are possible even by accident.
+
+**3. Certificate signing** — the same Ed25519 issuer key that signs agent credentials, reused to notarize a completed transaction. → [`certificate.py`](backend/app/certificate.py)
+
+```python
+def build_certificate(*, issuer, product, price_paise, transaction_id) -> dict:
+    certificate = {
+        "certificate_version": CERTIFICATE_VERSION,
+        "issuer": issuer.issuer_id,
+        "issuer_public_key_b64": issuer.public_key_b64,
+        "issued_at": datetime.now(timezone.utc).isoformat(),
+        "transaction_id": transaction_id,
+        "product": {"id": product.id, "name": product.name},
+        "agreed_price_paise": price_paise,
+        "trust_checks_passed": TRUST_CHECKS_PASSED,
+    }
+    certificate["signature"] = issuer.sign_payload(certificate)
+    return certificate
+```
+`sign_payload` signs the canonical (sorted-key) JSON bytes of everything above it — the signature covers the whole certificate, not just a hash the client has to trust was computed right.
+
+**4. Offline certificate verification** — no network call, no import of this repo's backend, just the public key already embedded in the file. → [`verify_certificate.py`](verify_certificate.py)
+
+```python
+def verify_certificate(certificate: dict) -> tuple[bool, str]:
+    payload = {k: v for k, v in certificate.items() if k != "signature"}
+    try:
+        public_key = Ed25519PublicKey.from_public_bytes(
+            base64.b64decode(certificate["issuer_public_key_b64"])
+        )
+        signature = base64.b64decode(certificate["signature"])
+        public_key.verify(signature, _canonical(payload))
+    except (InvalidSignature, ValueError, TypeError):
+        return False, "signature does not match"
+    return True, "signature matches -- certificate content is exactly what was signed"
+```
+This is the entire trust boundary: change one byte of the certificate and `public_key.verify` throws — no partial or fuzzy match.
+
+**5. `POST /negotiate`** — the actual request/response contract, not a description of it. → [`main.py`](backend/app/main.py)
+
+```python
+class NegotiateRequest(BaseModel):
+    goal_text: str = Field(min_length=1, max_length=500)
+    budget_paise: int = Field(gt=0, le=100_000_000)
+    product_id: str | None = Field(default=None, max_length=64)
+    occasion: str | None = Field(default=None, max_length=32)
+    priority: str | None = Field(default=None, max_length=32)
+    auto_pay: bool = True
+
+@app.post("/negotiate")
+def negotiate(body: NegotiateRequest) -> dict:
+    outcome = buyer.negotiate_and_purchase(
+        body.goal_text, body.budget_paise,
+        product_id=body.product_id, occasion=body.occasion,
+        priority=body.priority, auto_pay=body.auto_pay,
+    )
+    return _outcome_to_dict(outcome)
+```
+`auto_pay` is the fork between the scenario harness (pays immediately against a fake rail) and a real human at the dashboard (stops at a signed `checkout_token`, completes via a real Razorpay Checkout).
+
+**6. Idempotency check** — a repeated request returns the original result instead of charging twice. → [`trust/idempotency.py`](backend/app/trust/idempotency.py)
+
+```python
+def get(self, key: str) -> IdempotencyRecord | None:
+    with self._lock:
+        if key in self._results:
+            return IdempotencyRecord(result=self._results[key], is_replay=True)
+        return None
+
+# in TrustGuard, before any order is created or payment attempted:
+cached = self.idempotency_store.get(idempotency_key)
+if cached is not None:
+    return AuthorizationResult(approved=True, is_replay=True, cached_result=cached.result)
+```
+This check has to happen *before* the purchase attempt, not after — otherwise a "duplicate" has already caused a real charge by the time it's detected.
+
 ## Known limitations
 
 Being upfront, since this was built fast:
