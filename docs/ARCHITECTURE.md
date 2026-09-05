@@ -116,7 +116,7 @@ flowchart TD
     Afford -->|"no"| Zeuthen["run_zeuthen_negotiation()<br/>deterministic, see BARGAINING.md"]
 
     Zeuthen --> Outcome{"deal reached?"}
-    Outcome -->|"no"| Fail(["No deal — stalemate or<br/>max rounds. Nothing charged."])
+    Outcome -->|"no"| Fail(["No deal — stalemate, or round<br/>cap with too wide a gap. Nothing charged."])
     Outcome -->|"yes"| Phrase["LLM phrases each round<br/>for the trace — flavor only"]
 
     Accept --> PayMode{"auto_pay?"}

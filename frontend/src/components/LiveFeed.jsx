@@ -117,7 +117,7 @@ export default function LiveFeed({ onResult }) {
     } finally {
       // Cooldown is measured from when the run *finishes*, not when it
       // started -- a multi-round Zeuthen negotiation can itself take close
-      // to a minute (up to 12 rounds x 2 live Gemini calls), so starting the
+      // to a minute (up to 16 rounds x 2 live Gemini calls), so starting the
       // clock at click-time could let the cooldown fully elapse during the
       // run itself and defeat the point of throttling repeat clicks.
       localStorage.setItem(STORAGE_KEY, String(Date.now()));

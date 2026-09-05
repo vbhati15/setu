@@ -88,7 +88,7 @@ class RoundResult:
     merchant_offer_paise: int
     buyer_risk: float
     merchant_risk: float
-    conceder: str  # "buyer" | "merchant" | "agreement" | "stalemate" | "max_rounds_exceeded"
+    conceder: str  # "buyer" | "merchant" | "agreement" | "stalemate" | "round_cap_settlement" | "max_rounds_exceeded"
     deal: bool
     deal_price_paise: int | None
     stalemate: bool
@@ -103,6 +103,7 @@ def run_zeuthen_negotiation(
     min_concession_fraction: float,
     max_concession_fraction: float = 1.0,
     convergence_threshold_paise: int = 0,
+    close_threshold_paise: int = 0,
 ) -> list[RoundResult]:
     """Runs the Zeuthen concession protocol to convergence, stalemate, or
     round exhaustion. Returns the full round-by-round trace -- never raises
@@ -113,7 +114,17 @@ def run_zeuthen_negotiation(
     (not just an exact crossing) as agreement -- concession decay is
     asymptotic, so without this a negotiation between two rational,
     risk-averse parties could burn many rounds closing the last few paise of
-    a gap neither side actually cares about."""
+    a gap neither side actually cares about.
+
+    `close_threshold_paise` is the same idea applied once more, only at the
+    round cap itself: concession decay can still leave a small, immaterial
+    gap open when `max_rounds` runs out, which without this would report a
+    false "no deal" on a negotiation that was genuinely reachable. If the
+    final gap is within this threshold, round `max_rounds` settles at the
+    midpoint (`conceder="round_cap_settlement"`) instead of failing
+    (`conceder="max_rounds_exceeded"`). This is deterministic arithmetic,
+    identical in kind to the mid-negotiation convergence check above -- no
+    LLM involvement, no bypass of anything downstream. See BARGAINING.md."""
     rounds: list[RoundResult] = []
     buyer_offer = opening_buyer_offer_paise
     merchant_offer = opening_merchant_offer_paise
@@ -193,17 +204,37 @@ def run_zeuthen_negotiation(
             )
         )
 
-    rounds.append(
-        RoundResult(
-            round_number=max_rounds,
-            buyer_offer_paise=buyer_offer,
-            merchant_offer_paise=merchant_offer,
-            buyer_risk=buyer.risk(buyer_offer, merchant_offer),
-            merchant_risk=merchant.risk(merchant_offer, buyer_offer),
-            conceder="max_rounds_exceeded",
-            deal=False,
-            deal_price_paise=None,
-            stalemate=False,
+    if merchant_offer - buyer_offer <= close_threshold_paise:
+        midpoint = round((buyer_offer + merchant_offer) / 2)
+        # Same clamp as the mid-negotiation convergence branch -- the
+        # midpoint of two offers within `close_threshold_paise` of each
+        # other can still fall a few paise outside one side's reservation.
+        deal_price = min(buyer.reservation_paise, max(merchant.reservation_paise, midpoint))
+        rounds.append(
+            RoundResult(
+                round_number=max_rounds,
+                buyer_offer_paise=buyer_offer,
+                merchant_offer_paise=merchant_offer,
+                buyer_risk=0.0,
+                merchant_risk=0.0,
+                conceder="round_cap_settlement",
+                deal=True,
+                deal_price_paise=deal_price,
+                stalemate=False,
+            )
         )
-    )
+    else:
+        rounds.append(
+            RoundResult(
+                round_number=max_rounds,
+                buyer_offer_paise=buyer_offer,
+                merchant_offer_paise=merchant_offer,
+                buyer_risk=buyer.risk(buyer_offer, merchant_offer),
+                merchant_risk=merchant.risk(merchant_offer, buyer_offer),
+                conceder="max_rounds_exceeded",
+                deal=False,
+                deal_price_paise=None,
+                stalemate=False,
+            )
+        )
     return rounds

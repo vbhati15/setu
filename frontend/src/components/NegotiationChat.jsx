@@ -139,6 +139,9 @@ function plainOutcomeMessage(outcome, classified) {
   if (outcome.reason?.includes("no catalog product matches")) {
     return "We couldn't find a match for that budget and item — try raising the budget or picking something else.";
   }
+  if (outcome.reason?.includes("reached round limit without agreement")) {
+    return "No deal — reached the round limit without agreement. Offers were still apart when negotiating time ran out.";
+  }
   if (outcome.reason?.includes("negotiation ended without a deal")) {
     return "Your agent and Setu couldn't agree on a price this time.";
   }

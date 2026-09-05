@@ -6,11 +6,13 @@
 
 **No LLM freestyling a number. No "trust us, it's safe." Just deterministic math, live-verified security, and a signed receipt you can check yourself.**
 
+![Razorpay AI Buildathon](https://img.shields.io/badge/Razorpay%20AI%20Buildathon-Track%2001%3A%20AI%20Growth%20%26%20Agentic%20Commerce-0a0908?style=flat-square&labelColor=0a0908&color=e6b95a)
+
 *A buildathon project — not affiliated with any existing company or product also named "Setu."*
 
 [![Live dashboard](https://img.shields.io/badge/dashboard-live-e6b95a?style=flat-square)](https://setu-alpha-beige.vercel.app)
 [![Backend API](https://img.shields.io/badge/API-live-e6b95a?style=flat-square)](https://setu-59l6.onrender.com/health)
-[![Tests](https://img.shields.io/badge/backend%20tests-140%20passing-brightgreen?style=flat-square)](docs/TESTING.md)
+[![Tests](https://img.shields.io/badge/backend%20tests-141%20passing-brightgreen?style=flat-square)](docs/TESTING.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 [Live demo](https://setu-alpha-beige.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Threat model](docs/THREAT_MODEL.md) · [Bargaining strategy](docs/BARGAINING.md)
@@ -90,8 +92,9 @@ Full math → [`docs/BARGAINING.md`](docs/BARGAINING.md)
   <img src="docs/screenshots/certificate.png" alt="Download verification certificate button on the result card, after a real completed payment" width="700">
 </p>
 
-- **Every completed purchase gets a "Download verification certificate" button.**
-- It saves a signed JSON file: product, price, transaction id, timestamp, and exactly which trust checks passed.
+- **Every completed purchase gets a "View certificate" and a "Download verification certificate" button.**
+- **View certificate** opens a readable certificate card — product, price, transaction id, issued date, and the trust checks passed — rendering the exact same signed data the download produces, just formatted for a human.
+- **Download** saves that same data as a signed JSON file: product, price, transaction id, timestamp, and exactly which trust checks passed.
 - Signed with the same Ed25519 key the backend already uses for agent credentials — nothing new.
 - **You never have to trust our server to check it.** [`verify_certificate.py`](verify_certificate.py) verifies the signature completely offline — no network call, nothing that depends on us being honest or even online.
 
@@ -160,7 +163,7 @@ git clone <this-repo>
 cd setu
 cp .env.example .env   # fill in Razorpay test keys + Gemini API key
 make install
-make test               # run the backend test suite (140 tests)
+make test               # run the backend test suite (141 tests)
 make run                 # start the FastAPI backend on :8001
 make demo               # end-to-end Razorpay test-mode payment (needs real keys in .env)
 ```
@@ -180,25 +183,29 @@ python verify_certificate.py path/to/certificate.json
 ## Project structure
 
 ```
-backend/app/
-  buyer_agent/       Buyer Agent: product matching, negotiation, payment
-  merchant_agent/     Merchant Agent: x402 quotes, upsells, payment verification
-  bargaining/         Zeuthen bargaining engine — pure, deterministic, no LLM
-  trust/              TrustGuard: identity, credentials, policy, velocity,
-                       idempotency, daily spend, kill switch
-  x402/                Razorpay-adapted x402 protocol subset
-  llm/                 Provider-agnostic LLM client + latency/cost logging
-  certificate.py       Signed transaction certificates
-  checkout_quote.py    Short-lived signed tokens binding a negotiated price
-                       to a real Razorpay Checkout order
-  scripts/              Scenario test harness, local demo scripts
-frontend/src/
-  components/          Dashboard: hero, live negotiation feed, chat replay,
-                       decision trace, kill switch, audit log
-  lib/                  Shared formatting/classification helpers
-verify_certificate.py  Standalone, offline certificate verifier
-docs/                   Architecture, threat model, bargaining strategy,
-                       protocol spec, deployment, testing, decision log
+setu/
+├── backend/app/
+│   ├── buyer_agent/       — Buyer Agent: product matching, negotiation, payment
+│   ├── merchant_agent/    — Merchant Agent: x402 quotes, upsells, payment verification
+│   ├── bargaining/        — Zeuthen bargaining engine, pure & deterministic, no LLM
+│   ├── trust/             — TrustGuard: identity, credentials, policy, velocity,
+│   │                         idempotency, daily spend, kill switch
+│   ├── x402/              — Razorpay-adapted x402 protocol subset
+│   ├── llm/               — Provider-agnostic LLM client + latency/cost logging
+│   ├── scripts/           — Scenario test harness, local demo scripts
+│   ├── certificate.py     — Signed transaction certificates
+│   └── checkout_quote.py  — Short-lived signed tokens binding a negotiated price
+│                             to a real Razorpay Checkout order
+│
+├── frontend/src/
+│   ├── components/        — Dashboard: hero, live negotiation feed, chat replay,
+│   │                         decision trace, kill switch, audit log
+│   └── lib/                — Shared formatting/classification helpers
+│
+├── docs/                   — Architecture, threat model, bargaining strategy,
+│                             protocol spec, deployment, testing, decision log
+│
+└── verify_certificate.py  — Standalone, offline certificate verifier
 ```
 
 ## Trust layer, in one picture
@@ -228,7 +235,7 @@ flowchart TD
 
 ## Testing & live verification
 
-- **`pytest backend/tests -v` → 140/140 passing** locally.
+- **`pytest backend/tests -v` → 141/141 passing** locally.
 - **A black-box scenario harness** (`backend/app/scripts/scenario_harness.py`) ran 22 scenarios, 37 real calls, against the **live production API** — comfortable purchases, tight-budget negotiations, no-match failures, deliberate rule-breaks. Results in `backend/app/scripts/harness_results/*.jsonl`, surfaced live in the Test Results/Audit Log tabs.
 - **Every trust rule independently fired against production**, real evidence attached, not just a unit-test assertion. Transcripts in [`BUILD_LOG.md`](BUILD_LOG.md); how to reproduce in [`docs/TESTING.md`](docs/TESTING.md).
 

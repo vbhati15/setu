@@ -1,6 +1,6 @@
 # TESTING.md
 
-> Status: Day 6. 140 backend tests passing, plus a black-box scenario
+> Status: Day 6. 141 backend tests passing, plus a black-box scenario
 > harness run for real against the live production API. See `BUILD_LOG.md`
 > for the full day-by-day history and every live-verification transcript.
 
@@ -12,11 +12,11 @@ make test
 pytest backend/tests -v
 ```
 
-Expect `140 passed`.
+Expect `141 passed`.
 
 ## What's covered
 
-`backend/tests/` (140 tests):
+`backend/tests/` (141 tests):
 
 | File | Tests | Covers |
 |---|---|---|
@@ -25,7 +25,7 @@ Expect `140 passed`.
 | `test_catalog.py` | 13 | Catalog loading/validation, id/category rules, control-character rejection, `related()` lookup |
 | `test_trust_integration.py` | 9 | End-to-end trust-layer behavior through the real Buyer/Merchant flow — duplicate-charge prevention, spend-cap rejection, daily-spend-cap sequences, kill-switch mid-scenario, velocity escalation, Razorpay retry/timeout handling |
 | `test_trust_identity.py` | 8 | Ed25519 signing/verification, credential issuance/expiry/tampering, signed-request round-trips |
-| `test_zeuthen.py` | 7 | Utility function bounds, risk formula edge cases, full negotiations that converge, stalemate, and close instantly |
+| `test_zeuthen.py` | 8 | Utility function bounds, risk formula edge cases, full negotiations that converge, stalemate, close instantly, and the round-cap tie-break (settles a near-miss gap or reports an explicit no-deal) |
 | `test_x402.py` | 7 | `PaymentRequiredBody` shape, `X-PAYMENT` encode/decode round-trip, rejection of malformed/oversized/invalid headers |
 | `test_negotiate_endpoint.py` | 6 | `POST /negotiate` over HTTP — comfortable budget, invalid budget, kill-switch block, credential-scope rejection, occasion/priority behavioral wiring |
 | `test_checkout_quote.py` | 6 | The signed `checkout_token` — round-trip, tampering, expiry |

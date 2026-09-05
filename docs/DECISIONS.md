@@ -2,6 +2,41 @@
 
 Running log of non-obvious decisions and why they were made. Newest first.
 
+## 2026-09-05 — Round-cap tie-break: a reachable deal shouldn't die on the clock
+
+User-reported symptom: a tight-but-genuinely-workable budget (e.g. ₹869
+against an ₹899 list price) sometimes ended in "no deal" with the two
+offers only ~₹10 apart — nowhere near either party's real reservation
+price. Root cause: concession size decays asymptotically each round (a
+fraction of an already-shrinking gap), so a "best price" priority's
+stingier concession floor can leave a small, immaterial gap open right when
+`negotiation_max_rounds` runs out. Not a real stalemate (reservations
+overlapped the whole time), just a round-budget miss.
+
+Two changes, kept deliberately separate:
+
+1. `negotiation_max_rounds` 12 → 16, giving slow-decaying negotiations more
+   room before hitting the cap at all.
+2. A new deterministic tie-break in `run_zeuthen_negotiation`
+   (`close_threshold_paise`, config `negotiation_close_threshold_paise`,
+   default ₹150): if the round cap is hit with the final gap at or below
+   this threshold, settle at the midpoint (`conceder="round_cap_settlement"`)
+   instead of reporting a false "no deal". If the gap is still wider, it's
+   a real "no deal — reached round limit without agreement", worded
+   distinctly from a stalemate so the two failure modes are never
+   conflated in the API response or the UI.
+
+Deliberately NOT an LLM decision — same reasoning as the rest of the
+bargaining engine (see BARGAINING.md): the price is math, the LLM only
+phrases it. A round-cap settlement is still just a `deal_price_paise` on a
+normal `RoundResult`, so it flows through the exact same `_pay_and_collect`
+/ checkout path — full TrustGuard pipeline (spend cap, category, velocity,
+etc.), no bypass. Verified via a new `test_zeuthen.py` test that reproduces
+the exact reported shape (budget ₹100 under list price) and asserts the
+outcome is always one of exactly two things — a midpoint settlement or an
+explicit no-deal — never an unclear result. Full suite: 141/141 passing,
+no regressions.
+
 ## 2026-09-05 — Raw-paise-in-user-facing-text: full sweep, root-caused, and closed with a shared formatter
 
 This bug (a raw paise integer showing up somewhere a person reads it as

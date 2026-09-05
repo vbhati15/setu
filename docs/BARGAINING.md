@@ -125,11 +125,45 @@ If the buyer is pinned at its budget *and* the merchant is pinned at its
 floor, and a gap still remains, further rounds cannot change anything --
 `conceder = "stalemate"`, `deal = False`, negotiation ends immediately
 rather than burning the remaining round budget. If the round cap
-(`Settings.negotiation_max_rounds`, default 12) is hit without either
-crossing or a formal stalemate, the last round is marked
-`"max_rounds_exceeded"`, also `deal = False`. Both are explicit, structured
-failure states in `NegotiationOutcome` -- the Buyer Agent never silently
-treats a failed negotiation as a purchase.
+(`Settings.negotiation_max_rounds`) is hit without either crossing or a
+formal stalemate, the round-cap tie-break below decides the outcome. Every
+path is an explicit, structured result in `NegotiationOutcome` -- the Buyer
+Agent never silently treats a failed negotiation as a purchase, and never
+leaves the caller guessing which of these happened.
+
+## Round-cap tie-break: a reachable deal shouldn't die on the clock
+
+Neither of the two rules above is a "your offer wasn't good enough" check --
+one is genuine convergence, the other is a genuine dead end. But there's a
+third case those two don't cover: the negotiation was heading toward a real
+deal the whole time (the buyer's budget was always above the merchant's
+floor -- reservations overlap), concession size just decayed faster than
+`convergence_threshold_paise` could catch, and `negotiation_max_rounds` ran
+out one or two steps short. That's a round-budget miss, not a real
+stalemate, and reporting it as "no deal" would be misleading -- the two
+sides were, say, ₹10 apart on an ₹899 item, well within what either side
+would accept in practice.
+
+`run_zeuthen_negotiation`'s `close_threshold_paise` parameter
+(`Settings.negotiation_close_threshold_paise`, default ₹150) exists for
+exactly this. If `max_rounds` is reached and the final gap between the two
+offers is at or below this threshold, round `max_rounds` settles at the
+midpoint of the two final offers (clamped into both parties' feasible
+range) -- `conceder = "round_cap_settlement"`, `deal = True`. If the gap is
+still wider than that, the negotiation ends as an explicit
+`conceder = "max_rounds_exceeded"`, `deal = False` -- a distinct, clearly
+labeled "reached the round limit without agreement" result, never confused
+with a stalemate or a lower-round rejection, and never a silent failure or
+hang.
+
+This is deterministic arithmetic, identical in kind to the mid-negotiation
+convergence check -- no LLM call, no special-casing downstream. A price
+settled this way is still just `deal_price_paise` on a normal
+`RoundResult`, so it flows through the exact same path as any other agreed
+price: the Buyer Agent hands it to the Merchant Agent, which runs it through
+the full TrustGuard pipeline (spend cap, category, velocity, etc.) before
+any payment happens. There is no bypass for a round-cap settlement -- it can
+still be rejected or escalated like any other price if it fails a check.
 
 ## Division of labor: rules-first, LLM-as-fallback
 

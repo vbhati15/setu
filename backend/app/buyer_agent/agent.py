@@ -326,13 +326,21 @@ class BuyerAgent:
             min_concession_fraction=min_concession_fraction,
             max_concession_fraction=max_concession_fraction,
             convergence_threshold_paise=round(list_price_paise * self.settings.negotiation_convergence_fraction),
+            close_threshold_paise=self.settings.negotiation_close_threshold_paise,
         )
 
         self._render_trace(product, rounds, trace, occasion)
 
         last = rounds[-1]
         if not last.deal:
-            reason = f"negotiation ended without a deal: {last.conceder} after {len(rounds)} round(s)"
+            if last.conceder == "max_rounds_exceeded":
+                gap = last.merchant_offer_paise - last.buyer_offer_paise
+                reason = (
+                    f"No deal — reached round limit without agreement after {len(rounds)} round(s) "
+                    f"(final gap {format_rupees(gap)}, exceeds the {format_rupees(self.settings.negotiation_close_threshold_paise)} settlement threshold)"
+                )
+            else:
+                reason = f"negotiation ended without a deal: {last.conceder} after {len(rounds)} round(s)"
             trace.append(NegotiationTrace(len(rounds), "system", reason))
             return NegotiationOutcome(success=False, reason=reason, product=product, rounds=rounds, trace=trace)
 
@@ -417,9 +425,12 @@ class BuyerAgent:
                 )
             )
             if r.deal:
-                trace.append(
-                    NegotiationTrace(r.round_number, "system", f"Agreement reached at {format_rupees(r.deal_price_paise)}.")
+                message = (
+                    f"Round limit reached with a negligible gap left -- settled at the midpoint, {format_rupees(r.deal_price_paise)}."
+                    if r.conceder == "round_cap_settlement"
+                    else f"Agreement reached at {format_rupees(r.deal_price_paise)}."
                 )
+                trace.append(NegotiationTrace(r.round_number, "system", message))
             elif r.stalemate:
                 trace.append(
                     NegotiationTrace(

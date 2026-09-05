@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     # A remaining gap this small (as a fraction of list price) is treated as
     # agreement rather than forcing rounds to close the literal last paise.
     negotiation_convergence_fraction: float = 0.01
+    # Deterministic round-cap tie-break: if negotiation_max_rounds is reached
+    # with the two offers still this close (in paise), settle at their
+    # midpoint instead of reporting a false "no deal" -- concession size
+    # decays asymptotically each round, so a genuinely reachable deal can
+    # otherwise miss the convergence check by a few rupees when the round
+    # budget runs out. Still just arithmetic, still goes through the full
+    # TrustGuard pipeline like any other agreed price. See BARGAINING.md.
+    negotiation_close_threshold_paise: int = 15_000  # INR 150
     # Buyer will consider products priced up to this multiple of budget as
     # negotiation candidates (since a good-faith opening ask can still close below list price).
     buyer_price_ceiling_factor: float = 1.5
